@@ -6,12 +6,17 @@ import { join, resolve } from "node:path";
 
 const root = resolve(import.meta.dirname, "../..");
 const win = process.platform === "win32";
-const py = process.env.PYTHON ?? (existsSync(join(root, win ? ".venv/Scripts/python.exe" : ".venv/bin/python"))
-  ? join(root, win ? ".venv/Scripts/python.exe" : ".venv/bin/python") : "python3");
+const venvPy = join(root, win ? ".venv/Scripts/python.exe" : ".venv/bin/python");
+const py = process.env.PYTHON ?? (existsSync(venvPy) ? venvPy : win ? "python" : "python3");
 const triple = execSync("rustc -vV").toString().match(/host: (\S+)/)[1];
 
-execSync(`"${py}" -m PyInstaller --onefile --clean --name pdf2md --paths sidecar --distpath sidecar/dist --workpath sidecar/build --specpath sidecar/build sidecar/pdf2md/__main__.py`,
-  { cwd: root, stdio: "inherit" });
+// The entry is run_pdf2md.py (absolute import); pdf2md/__main__.py cannot be a frozen entry point.
+const flags = [
+  "--onefile", "--clean", "--name pdf2md", "--paths sidecar",
+  "--collect-data pdfminer",                 // CMap/encoding tables used for non-Latin fonts
+  "--distpath sidecar/dist", "--workpath sidecar/build", "--specpath sidecar/build",
+].join(" ");
+execSync(`"${py}" -m PyInstaller ${flags} sidecar/run_pdf2md.py`, { cwd: root, stdio: "inherit" });
 
 const out = join(root, "app/src-tauri/binaries");
 mkdirSync(out, { recursive: true });

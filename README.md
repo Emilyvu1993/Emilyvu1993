@@ -53,5 +53,20 @@ cd app && npm test && npm run typecheck             # UI utils
 cd app && npm run dev & node e2e/ui-flow.mjs        # UI flows (needs playwright)
 ```
 
-## Release build
-`npm run tauri:build` (per OS) freezes the sidecar with PyInstaller into `src-tauri/binaries/` and bundles it.
+## Installers
+
+**Windows (MSI + NSIS `.exe`)** are built by GitHub Actions: *Actions → Build desktop app → Run workflow* (or push a tag such as
+`v0.1.0`), then download the `windows-installers` artifact from the finished run. The workflow first runs all tests on Linux, then
+freezes the Python sidecar, **smoke-tests the frozen executable** (`sidecar/smoke_frozen.py`) and only then builds the installers.
+
+The installers are **not code-signed**: Windows SmartScreen shows "Windows protected your PC" → *More info → Run anyway*.
+
+Build locally (per OS; PyInstaller does not cross-compile):
+```bash
+python -m pip install -r sidecar/requirements-dev.txt
+cd app && npm ci
+npm run tauri:build          # freezes the sidecar (sidecar/run_pdf2md.py), then bundles the app
+python ../sidecar/smoke_frozen.py   # optional: check the frozen sidecar on its own
+```
+Linux: `npx tauri build --bundles deb --config src-tauri/tauri.release.conf.json` (needs `libwebkit2gtk-4.1-dev` etc.).
+The sidecar is bundled as `pdf2md[.exe]` next to the app executable; `PDF2MD_SIDECAR_PROGRAM` overrides it for debugging.
