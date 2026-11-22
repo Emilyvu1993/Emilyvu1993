@@ -47,7 +47,11 @@ def handle(line: str) -> dict:
 
 
 def main() -> None:
+    # Never depend on the host locale / env vars (Windows pipes default to a legacy code page, which would
+    # corrupt non-ASCII paths and configs): the protocol is UTF-8 in both directions.
+    sys.stdin.reconfigure(encoding="utf-8")
     sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
     for line in sys.stdin:
         if not line.strip():
             continue

@@ -22,8 +22,13 @@ DEFAULT_EXE = HERE / "dist" / ("pdf2md.exe" if os.name == "nt" else "pdf2md")
 checks = 0
 
 
+LAST_RPC: "Rpc | None" = None
+
+
 def fail(msg: str) -> "None":
     print(f"SMOKE FAILED: {msg}", file=sys.stderr)
+    if LAST_RPC is not None and LAST_RPC.err:
+        print("--- sidecar stderr (tail) ---\n" + "".join(LAST_RPC.err)[-3000:], file=sys.stderr)
     sys.exit(1)
 
 
@@ -57,14 +62,18 @@ def make_pdfs(d: Path) -> dict[str, Path]:
 
 class Rpc:
     def __init__(self, exe: Path) -> None:
+        global LAST_RPC
+        LAST_RPC = self
         env = {**os.environ, "PYTHONUNBUFFERED": "1", "PYTHONIOENCODING": "utf-8"}   # what the Rust client sets
         self.p = subprocess.Popen([str(exe)], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
         self.watchdog = threading.Timer(300, self.p.kill)                              # hard stop: never hang CI
         self.watchdog.daemon = True                                                    # must not keep the interpreter alive
         self.watchdog.start()
         self.n = 0
+        self.err: list[str] = []                                                       # sidecar stderr, shown when a check fails
+        threading.Thread(target=lambda: [self.err.append(x.decode("utf-8", "replace")) for x in self.p.stderr], daemon=True).start()
 
-    def call(self, method: str, **params):
+    def call(self, method: str, expect_error: bool = False, **params):
         self.n += 1
         self.p.stdin.write((json.dumps({"id": self.n, "method": method, "params": params}, ensure_ascii=False) + "\n").encode("utf-8"))
         self.p.stdin.flush()
@@ -76,6 +85,8 @@ class Rpc:
         except ValueError:
             fail(f"'{method}': sidecar wrote something that is not JSON: {line[:200]!r}")
         check(r.get("id") == self.n, f"{method}: response id matches")
+        if "error" in r and not expect_error:
+            fail(f"'{method}' returned an error: {json.dumps(r['error'], ensure_ascii=True)}  (params: {json.dumps(params, ensure_ascii=True)[:300]})")
         return r
 
     def close(self) -> None:
@@ -120,7 +131,7 @@ def main() -> None:
             r = rpc.call("convert", pdf_path=str(pdfs["table"]), config=cfg, out_tmp_path=str(work / "t.md"))["result"]
             check(r["record_count"] == 1 and r["preview"][0]["row_count"] == 5, "convert table: one record per table, 5 rows")
 
-            e = rpc.call("convert", pdf_path=str(work / "missing.pdf"), config=cfg, out_tmp_path=str(work / "x.md"))
+            e = rpc.call("convert", expect_error=True, pdf_path=str(work / "missing.pdf"), config=cfg, out_tmp_path=str(work / "x.md"))
             check(e.get("error", {}).get("code") == "PDF_NOT_FOUND", "errors come back as coded errors")
             check(not (work / "x.md").exists(), "a failed conversion writes nothing")
         finally:
