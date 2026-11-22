@@ -241,6 +241,10 @@ function SectionsFields({ rule, setEx }: { rule: SectionsRule; setEx: (p: Partia
           <span className="mono">1.</span>, <span className="mono">1.1</span>, <span className="mono">1.1.1</span>. Levels follow the hierarchy found in the document.
         </p>
       )}
+      <label className="span-all"><span>Never a heading (regex) <span className="muted">optional · e.g. a label repeated in every card</span></span>
+        <input className="mono" value={rule.heading_exclude ?? ""} placeholder="^(Is|Are) (it|he|she|they)\\b.*upside down\\?$"
+          onChange={(e) => setEx({ heading_exclude: e.target.value })} />
+      </label>
       <label>Max heading length (chars)
         <input type="number" min={1} max={500} value={rule.max_heading_chars}
           onChange={(e) => setEx({ max_heading_chars: Math.min(500, Math.max(1, Math.round(num(e.target.value, 120)))) })} />
@@ -249,6 +253,7 @@ function SectionsFields({ rule, setEx }: { rule: SectionsRule; setEx: (p: Partia
         <label className="check"><input type="checkbox" checked={rule.include_preamble} onChange={(e) => setEx({ include_preamble: e.target.checked })} />Keep text before the first heading</label>
         <label className="check"><input type="checkbox" checked={rule.join_lines} onChange={(e) => setEx({ join_lines: e.target.checked })} />Join wrapped lines into paragraphs</label>
         <label className="check"><input type="checkbox" checked={rule.skip_header_footer} onChange={(e) => setEx({ skip_header_footer: e.target.checked })} />Drop running headers/footers &amp; page numbers</label>
+        <label className="check"><input type="checkbox" checked={rule.emphasis} onChange={(e) => setEx({ emphasis: e.target.checked })} />Keep bold/italic as Markdown (**bold**, *italic*)</label>
         <label className="check"><input type="checkbox" checked={rule.normalize_unicode} onChange={(e) => setEx({ normalize_unicode: e.target.checked })} />Normalise Unicode (NFC): same text, stable diacritics</label>
       </div>
     </>

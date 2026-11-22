@@ -11,7 +11,10 @@ Desktop app (Tauri + React + Python sidecar) that turns **text-based PDFs** into
 | **Text sections (headings)** | reports, contracts, legal text | one section: heading + its body |
 
 Text sections detect headings **by font** (size / bold), **by numbering** (Phần/Chương/Mục/Điều, `I.`, `1.`, `1.1`…) or **by regex**.
-Fields: `title, level, heading, body, markdown, page, page_end, word_count`; `{{ markdown }}` is the ready-made default.
+Fields: `title, level, parent, heading, body, markdown, page, page_end, word_count` (`parent` = title of the enclosing heading, e.g. the suit of a card); `{{ markdown }}` is the ready-made default.
+Options for real-world layouts: **Never a heading (regex)** drops lines such as a label repeated in every card
+(`^(Is|Are) (it|he|she|they)\b.*upside down\?$`); a line that opens with a **bold label** (`Home:`, `Is he upside down?`) starts
+its own paragraph; **bold/italic are kept** as `**bold**` / `*italic*` (switch off in the rule; wording is never changed).
 Text is never translated: original language and diacritics are kept (Unicode normalised to NFC, switchable).
 Limits: running headers/footers are recognised from repetition, so a **1-page** document cannot be cleaned;
 PDFs whose fonts lack a Unicode map (e.g. legacy Vietnamese fonts) are rejected with `TEXT_ENCODING_BROKEN` instead of producing garbage.
@@ -44,7 +47,7 @@ npm run dev                # browser-only UI with the mock backend (no Rust/Pyth
 
 ## Tests
 ```bash
-cd sidecar && ../.venv/bin/python -m pytest -q      # engine + RPC + sections + table records + angles (129)
+cd sidecar && ../.venv/bin/python -m pytest -q      # engine + RPC + sections + table records + angles + tarot-style sections (142)
 cd app/src-tauri && cargo test                      # store, atomic save, sidecar, full flows (16)
 cd app && npm test && npm run typecheck             # UI utils
 cd app && npm run dev & node e2e/ui-flow.mjs        # UI flows (needs playwright)

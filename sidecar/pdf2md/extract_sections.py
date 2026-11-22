@@ -11,16 +11,17 @@ from __future__ import annotations
 import re
 import unicodedata
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from .config import compile_regex
 from .errors import NO_RECORDS_FOUND, ConvertError
 from .pdfio import apply_glyph_map, release
 
-COLUMNS = ["title", "level", "heading", "body", "markdown", "page", "page_end", "word_count"]
+COLUMNS = ["title", "level", "parent", "heading", "body", "markdown", "page", "page_end", "word_count"]
 MAX_LEVEL = 6
 
 BOLD_RE = re.compile(r"(?i)bold|black|heavy|semibold|demi|[-,.]bd\b|\bbd\b")
+ITALIC_RE = re.compile(r"(?i)italic|oblique")
 WORD_RE = re.compile(r"[^\W\d_]{2,}")  # a heading contains at least one real word (not lone symbols/letters)
 PAGE_NUM_RE = re.compile(r"(?i)^\W*(?:trang|page|p\.)?\s*\d+(?:\s*(?:/|of|trên)\s*\d+)?\W*$")
 # bullet glyphs often have no Unicode mapping -> pdfminer emits "(cid:N)"
@@ -48,6 +49,60 @@ class Line:
     bold: bool
     page_height: float
     kind: tuple | None = None  # set when the line is a heading
+    runs: list = field(default_factory=list)  # [(text, bold, italic)] in reading order; [] = unstyled
+
+    def md(self) -> str:
+        """Line text with bold/italic as Markdown; spaces stay outside the markers."""
+        if not self.runs:
+            return self.text
+        out = []
+        for t, b, i in self.runs:
+            core = t.strip()
+            if not core or not (b or i):
+                out.append(t)
+                continue
+            m = "***" if b and i else "**" if b else "*"
+            out.append(f"{t[:len(t) - len(t.lstrip())]}{m}{core}{m}{t[len(t.rstrip()):]}")
+        return re.sub(r"\s+", " ", "".join(out)).strip()
+
+
+def _styled_runs(chars: list[dict], text: str, normalize: bool) -> list[tuple[str, bool, bool]]:
+    """Group a line's characters into (text, bold, italic) runs. Falls back to [] (plain text) unless the
+    rebuilt text equals the line text, so emphasis can never alter the wording."""
+    runs: list[list] = []
+    prev: dict | None = None
+    for c in chars:
+        t = c.get("text", "")
+        if not t:
+            continue
+        if t.isspace():
+            if runs:
+                runs[-1][0] += " "           # spaces keep the style of the text before them
+        else:
+            if prev is not None and not prev["text"].isspace() and c["x0"] - prev["x1"] > 0.2 * c["size"] and runs:
+                runs[-1][0] += " "
+            fn = c.get("fontname", "")
+            b, i = bool(BOLD_RE.search(fn)), bool(ITALIC_RE.search(fn))
+            if runs and runs[-1][1] == b and runs[-1][2] == i:
+                runs[-1][0] += t
+            else:
+                runs.append([t, b, i])
+        prev = c
+    joined = re.sub(r"\s+", " ", "".join(r[0] for r in runs)).strip()
+    if joined != text:
+        return []
+    out: list[tuple[str, bool, bool]] = []
+    for t, b, i in runs:
+        t = re.sub(r"\s+", " ", t)
+        if out and out[-1][0].endswith(" ") and t.startswith(" "):
+            t = t[1:]
+        if normalize:
+            t = unicodedata.normalize("NFC", t)
+        out.append((t, b, i))
+    if out:
+        out[0] = (out[0][0].lstrip(), out[0][1], out[0][2])
+        out[-1] = (out[-1][0].rstrip(), out[-1][1], out[-1][2])
+    return [r for r in out if r[0]]
 
 
 def load_lines(pdf, pages: list[int], normalize: bool = True, glyph_map: dict | None = None) -> list[Line]:
@@ -60,11 +115,12 @@ def load_lines(pdf, pages: list[int], normalize: bool = True, glyph_map: dict | 
             chars = [c for c in ln["chars"] if c.get("text", "").strip()]
             if not text or not chars:
                 continue
+            runs = _styled_runs(ln["chars"], text, normalize)
             if normalize:
                 text = unicodedata.normalize("NFC", text)
             size = Counter(round(c["size"] * 2) / 2 for c in chars).most_common(1)[0][0]
             bold = sum(1 for c in chars if BOLD_RE.search(c.get("fontname", ""))) / len(chars) >= 0.6
-            out.append(Line(text, pi + 1, ln["top"], ln["bottom"], size, bold, float(page.height)))
+            out.append(Line(text, pi + 1, ln["top"], ln["bottom"], size, bold, float(page.height), runs=runs))
         release(page)
     return out
 
@@ -125,6 +181,10 @@ def _numbering_rank(text: str, max_chars: int) -> int | None:
 def detect_headings(lines: list[Line], rule: dict, body_size: float, body_bold: float) -> None:
     mode = rule.get("heading_mode", "font")
     max_chars = int(rule.get("max_heading_chars", 120))
+    ex_pat = rule.get("heading_exclude")
+    ex = compile_regex(ex_pat, "extraction.heading_exclude") if ex_pat else None
+    if ex:  # lines the user says are never headings (e.g. a repeated label such as "Is it upside down?")
+        lines = [l for l in lines if not ex.search(l.text)]
     if mode == "font":
         ratio = float(rule.get("size_ratio", 1.15))
         use_bold = rule.get("bold_headings", True) and body_bold < 0.5
@@ -162,19 +222,31 @@ def _keyword_only(text: str) -> bool:
     return any(rx.match(text) for rx, _ in KEYWORD_RULES[:3]) and len(text.split()) <= 2
 
 
-def _paragraphs(body: list[Line], join_lines: bool) -> str:
+def _starts_label(l: Line, prev: Line | None) -> bool:
+    """A line that opens with a bold label ("Home:", "Is he upside down?") followed by regular text."""
+    if not l.runs or not l.runs[0][1]:
+        return False
+    if not any((not r[1]) and r[0].strip() for r in l.runs[1:]):
+        return False                                    # entirely bold: not a label + text
+    label = l.runs[0][0].strip()
+    if len(label) > 60 or not label.endswith((":", "?")):
+        return False
+    return not (prev and prev.runs and prev.runs[-1][1] and prev.runs[-1][0].strip())  # label wrapped from above
+
+
+def _paragraphs(body: list[Line], join_lines: bool, emphasis: bool = True) -> str:
     paras: list[tuple[list[str], bool]] = []
     cur: list[str] = []
     cur_bullet = False
     prev: Line | None = None
     for l in body:
-        txt = l.text
+        txt = l.md() if emphasis else l.text
         b = BULLET_RE.match(txt)
         if b:
             txt = "- " + txt[b.end():]
         if prev is None:
             new = False
-        elif b:
+        elif b or _starts_label(l, prev):
             new = True
         elif l.page != prev.page:
             new = prev.text.rstrip().endswith((".", "!", "?", ":", ";"))
@@ -202,6 +274,7 @@ def _paragraphs(body: list[Line], join_lines: bool) -> str:
 def build_sections(lines: list[Line], rule: dict) -> list[dict]:
     include_pre = rule.get("include_preamble", True)
     join = rule.get("join_lines", True)
+    emphasis = rule.get("emphasis", True)
     raw: list[dict] = []
     cur: dict | None = None
     pre: list[Line] = []
@@ -239,12 +312,19 @@ def build_sections(lines: list[Line], rule: dict) -> list[dict]:
         secs.append({**r, "level": levels[r["kind"]]})
 
     out = []
+    stack: list[tuple[int, str]] = []  # (level, title) of the open ancestors
     for s in secs:
-        body = _paragraphs(s["body"], join)
+        parent = ""
+        if s["level"]:
+            while stack and stack[-1][0] >= s["level"]:
+                stack.pop()
+            parent = stack[-1][1] if stack else ""
+            stack.append((s["level"], s["title"]))
+        body = _paragraphs(s["body"], join, emphasis)
         heading = f"{'#' * s['level']} {s['title']}" if s["level"] else ""
         md = "\n\n".join(x for x in (heading, body) if x)
         out.append({
-            "title": s["title"], "level": s["level"], "heading": heading, "body": body, "markdown": md,
+            "title": s["title"], "level": s["level"], "parent": parent, "heading": heading, "body": body, "markdown": md,
             "page": s["page"], "page_end": max(s["end"], s["page"]), "word_count": len(body.split()),
             "_page": s["page"],
         })

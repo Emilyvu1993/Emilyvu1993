@@ -94,10 +94,14 @@ await radios.nth(3).click();
 await page.getByRole("heading", { name: "annual-report.pdf" }).waitFor();
 await page.getByText(/No tables detected/).waitFor();
 await page.getByRole("button", { name: "Use Text sections" }).click();
-await page.getByText(/7 headings → 7 records/).waitFor();
+await page.getByText(/8 headings → 8 records/).waitFor();          // includes the stand-alone "Is it upside down?" label
+assert.equal(await page.getByLabel(/Keep bold\/italic/).isChecked(), true);       // emphasis is kept by default
+await page.getByLabel(/Never a heading/).fill("^Is it upside down");
+await page.getByText(/7 headings → 7 records/).waitFor();          // exclusion removes it from the outline at once
 await page.getByLabel(/Short bold lines/).uncheck();
 await page.getByText(/6 headings → 6 records/).waitFor();          // outline reacts to detection settings
 await page.getByLabel(/Short bold lines/).check();
+await page.getByText(/7 headings → 7 records/).waitFor();
 await page.getByRole("button", { name: "Convert & preview" }).click();
 await page.getByText(/Preview · top 3 of 7 records/).waitFor();
 assert.equal(await page.locator(".md h1").first().innerText(), "Tổng quan");   // original language kept

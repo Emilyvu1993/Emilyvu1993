@@ -9,7 +9,7 @@ from .errors import INVALID_CONFIG, REGEX_INVALID, ConvertError
 TRANSFORM_RE = re.compile(r"^(trim|upper|lower|number|number:eu|date:.+)$")
 OUTPUT_MODES = {"single_file", "file_per_record"}
 HEADING_MODES = {"font", "numbering", "regex"}
-SECTION_BOOLS = ("bold_headings", "include_preamble", "join_lines", "skip_header_footer", "normalize_unicode")
+SECTION_BOOLS = ("bold_headings", "include_preamble", "join_lines", "skip_header_footer", "normalize_unicode", "emphasis")
 
 
 def _req(d: dict, key: str, path: str) -> Any:
@@ -42,6 +42,12 @@ def validate_sections(ex: dict) -> None:
     for k in SECTION_BOOLS:
         if k in ex and not isinstance(ex[k], bool):
             raise ConvertError(INVALID_CONFIG, f"'extraction.{k}' must be true or false")
+    he = ex.get("heading_exclude")
+    if he is not None:
+        if not isinstance(he, str):
+            raise ConvertError(INVALID_CONFIG, "'extraction.heading_exclude' must be a regex string")
+        if he:
+            compile_regex(he, "extraction.heading_exclude")
     if mode == "regex":
         hp = ex.get("heading_pattern")
         if not isinstance(hp, str) or not hp:

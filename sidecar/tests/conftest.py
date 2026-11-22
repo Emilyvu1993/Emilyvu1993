@@ -194,6 +194,35 @@ def fx(tmp_path_factory):
     _doc(p, [x for i in range(30) for x in (Paragraph(f"Heading {i}", h1), Paragraph("plain body text " * 4, pp))])
     paths["many_heads"] = str(p)
 
+    # ---- tarot-like: bordered 2-column table (empty image column), group headings, bold labels ----
+    from reportlab.platypus import Table as RLTable
+
+    b = ParagraphStyle("tb", fontName="Helvetica", fontSize=10, leading=12)
+    grp = ParagraphStyle("tg", fontName="Helvetica", fontSize=24, leading=28, spaceBefore=10, spaceAfter=6)
+    txt = "A fairly long sentence about the meaning of this card, wrapping over more than a single line of the cell. "
+
+    def major(title, tag):
+        return [Paragraph(f"<b>{title} says:</b> <b><i>{tag}</i></b>", b), Paragraph(txt * 2, b),
+                Paragraph(f"<b>Home:</b> {txt}", b), Paragraph(f"<b>Love and Relationships:</b> {txt}", b),
+                Paragraph(f"<b><i>Is he upside down?</i></b> {txt}", b)]
+
+    def minor(title):
+        return [Paragraph(f"<b>{title}</b>", b), Paragraph(txt * 2, b), Spacer(1, 10),
+                Paragraph("<b><i>Is it upside down?</i></b>", b), Paragraph(txt, b)]
+
+    def card_table(cards):
+        t = RLTable([[Spacer(1, 30), c] for c in cards], colWidths=[60, 400])
+        t.setStyle(TableStyle([("GRID", (0, 0), (-1, -1), 0.5, colors.black)]))
+        return t
+
+    p = d / "tarot_like.pdf"
+    _doc(p, [Paragraph("The Major Arcana", grp),
+             card_table([major("0 The Fool", "Look before you leap!"), major("I The Magician", "Go, go go!"),
+                         major("The Chariot", "You can move on")]),
+             PageBreak(), Paragraph("Suit of Wands", grp),
+             card_table([minor("Ace of Wands"), minor("Two of Wands"), minor("Three of Wands")])])
+    paths["tarot_like"] = str(p)
+
     p = d / "corrupt.pdf"
     p.write_bytes(b"%PDF-1.7\nthis is not really a pdf\n%%EOF")
     paths["corrupt"] = str(p)

@@ -29,7 +29,7 @@ const DOC_HEADINGS = [
   { title: "Tổng quan", level: 1, size: 18, bold: true, page: 1 }, { title: "Bối cảnh thị trường", level: 2, size: 13, bold: true, page: 1 },
   { title: "Kết quả kinh doanh", level: 1, size: 18, bold: true, page: 2 }, { title: "Doanh thu", level: 2, size: 13, bold: true, page: 2 },
   { title: "Chi phí", level: 2, size: 13, bold: true, page: 3 }, { title: "Rủi ro và triển vọng", level: 1, size: 18, bold: true, page: 4 },
-  { title: "Ghi chú", level: 2, size: 10, bold: true, page: 5 },
+  { title: "Ghi chú", level: 2, size: 10, bold: true, page: 5 }, { title: "Is it upside down?", level: 2, size: 10, bold: true, page: 5 },
 ];
 const NUMBERED = ["Chương I QUY ĐỊNH CHUNG", "Điều 1. Phạm vi điều chỉnh", "Điều 2. Đối tượng áp dụng", "Chương II QUYỀN VÀ NGHĨA VỤ"];
 const VI = "Nội dung giữ nguyên ngôn ngữ gốc của tài liệu, không dịch. ";
@@ -37,6 +37,9 @@ const VI = "Nội dung giữ nguyên ngôn ngữ gốc của tài liệu, không
 function mockOutline(rule: Record<string, any>): OutlineResult {
   const font_sizes = [{ size: 10, chars: 8200, bold_chars: 140 }, { size: 13, chars: 220, bold_chars: 220 }, { size: 18, chars: 120, bold_chars: 120 }];
   let heads: { title: string; level: number; page: number; size: number }[];
+  let ex: RegExp | null = null;
+  try { ex = rule.heading_exclude ? new RegExp(rule.heading_exclude) : null; }
+  catch (e) { throw err("REGEX_INVALID", `Invalid regex in extraction.heading_exclude: ${(e as Error).message}`); }
   if (rule.heading_mode === "numbering") {
     heads = NUMBERED.map((t, i) => ({ title: t, level: t.startsWith("Chương") ? 1 : 2, page: 1 + (i > 2 ? 1 : 0), size: 11 }));
   } else if (rule.heading_mode === "regex") {
@@ -48,6 +51,7 @@ function mockOutline(rule: Record<string, any>): OutlineResult {
     heads = DOC_HEADINGS.filter((h) => h.size >= 10 * ratio || (rule.bold_headings && h.bold))
       .map((h) => ({ title: h.title, level: h.level, page: h.page, size: h.size }));
   }
+  heads = ex ? heads.filter((h) => !ex!.test(h.title)) : heads;
   return { body_size: 10, total: heads.length, headings: heads, font_sizes };
 }
 
@@ -108,10 +112,14 @@ function convert(fileId: string, cfg: OutputConfigDraft): ConvertOutcome {
       throw err("NO_RECORDS_FOUND", "No headings detected with the current settings",
         { body_font_size: o.body_size, font_sizes: o.font_sizes, hint: "Lower size_ratio, enable bold headings, or switch heading_mode" });
     }
+    const stack: { level: number; title: string }[] = [];
     raw = o.headings.map((h, i) => {
       const body = VI.repeat(3 + (i % 3));
       const heading = `${"#".repeat(h.level)} ${h.title}`;
-      return { title: h.title, level: String(h.level), heading, body, markdown: `${heading}\n\n${body.trim()}`, page: String(h.page),
+      while (stack.length && stack[stack.length - 1].level >= h.level) stack.pop();
+      const parent = stack.length ? stack[stack.length - 1].title : "";
+      stack.push({ level: h.level, title: h.title });
+      return { title: h.title, level: String(h.level), parent, heading, body, markdown: `${heading}\n\n${body.trim()}`, page: String(h.page),
         page_end: String(h.page), word_count: String(body.split(/\s+/).filter(Boolean).length) };
     });
   } else if (kind === "text") {
