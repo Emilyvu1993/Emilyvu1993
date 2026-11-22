@@ -59,6 +59,14 @@ def test_passthrough_when_no_fields(fx, table_cfg, tmp_path):
     assert r["preview"][0]["Amount"] == "1,000.50"
 
 
+def test_borderless_table_auto_fallback(fx, table_cfg, tmp_path):
+    r = engine.convert(fx["table_borderless"], table_cfg, str(tmp_path / "o.md"))
+    assert r["record_count"] == 4 and r["preview"][0]["desc"] == "Payment #1"
+    table_cfg["extraction"]["table_strategy"] = "lines"
+    assert code_of(engine.convert, fx["table_borderless"], table_cfg, str(tmp_path / "o.md")) == errors.TABLE_NOT_FOUND
+    assert engine.inspect(fx["table_borderless"])["tables"][0]["columns"] == ["Date", "Description", "Amount"]
+
+
 # ---------- block ----------
 def test_block_extraction_spans_pages(fx, block_cfg, tmp_path):
     r = engine.convert(fx["blocks"], block_cfg, str(tmp_path / "o.md"))
@@ -128,7 +136,11 @@ def test_no_records(fx, block_cfg, tmp_path):
 
 
 def test_table_not_found(fx, table_cfg, tmp_path):
+    table_cfg["extraction"]["table_strategy"] = "lines"
     assert code_of(engine.convert, fx["blocks"], table_cfg, str(tmp_path / "o.md")) == errors.TABLE_NOT_FOUND
+    # auto falls back to text alignment: a "table" exists but the mapped columns don't
+    table_cfg["extraction"]["table_strategy"] = "auto"
+    assert code_of(engine.convert, fx["blocks"], table_cfg, str(tmp_path / "o.md")) == errors.FIELD_MISSING
 
 
 def test_invalid_pages(fx, table_cfg, tmp_path):

@@ -35,6 +35,8 @@ def validate(cfg: Any) -> dict:
         hr = ex.get("header_row", 0)
         if not isinstance(hr, int) or hr < 0:
             raise ConvertError(INVALID_CONFIG, "'extraction.header_row' must be an integer >= 0")
+        if ex.get("table_strategy", "auto") not in ("auto", "lines", "text"):
+            raise ConvertError(INVALID_CONFIG, "'extraction.table_strategy' must be auto, lines or text")
         ti = ex.get("table_index")
         if ti is not None and (not isinstance(ti, int) or ti < 0):
             raise ConvertError(INVALID_CONFIG, "'extraction.table_index' must be an integer >= 0")

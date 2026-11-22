@@ -27,6 +27,19 @@ def normalize_header(row: list) -> list[str]:
     return out
 
 
+TEXT_SETTINGS = {"vertical_strategy": "text", "horizontal_strategy": "text"}
+STRATEGIES = {"auto", "lines", "text"}
+
+
+def find_tables(page, strategy: str = "auto") -> list[list[list]]:
+    """'lines' = ruled tables; 'text' = whitespace-aligned (borderless); 'auto' = lines, then text."""
+    if strategy in ("auto", "lines"):
+        t = page.extract_tables()
+        if t or strategy == "lines":
+            return t
+    return page.extract_tables(TEXT_SETTINGS)
+
+
 def extract(pdf, pages: list[int], rule: dict) -> tuple[list[str], list[dict]]:
     header_row = rule.get("header_row", 0)
     table_index = rule.get("table_index")
@@ -39,7 +52,7 @@ def extract(pdf, pages: list[int], rule: dict) -> tuple[list[str], list[dict]]:
 
     for pi in pages:
         page = pdf.pages[pi]
-        tables = page.extract_tables()
+        tables = find_tables(page, rule.get("table_strategy", "auto"))
         release(page)
         chosen = tables if table_index is None else (
             [tables[table_index]] if table_index < len(tables) else []

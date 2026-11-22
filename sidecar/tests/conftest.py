@@ -36,6 +36,10 @@ def fx(tmp_path_factory):
     )
     paths["table_multi"] = str(p)
 
+    p = d / "table_borderless.pdf"
+    SimpleDocTemplate(str(p), pagesize=A4).build([Table([HEADER] + _rows(4))])
+    paths["table_borderless"] = str(p)
+
     p = d / "blocks.pdf"
     c = canvas.Canvas(str(p), pagesize=A4)
     y = 800

@@ -15,7 +15,8 @@ from .errors import INTERNAL, RPC_BAD_REQUEST, ConvertError
 
 METHODS = {
     "ping": lambda p: {"pong": True, "version": __version__},
-    "inspect": lambda p: engine.inspect(p["pdf_path"], p.get("max_pages", 5), p.get("sample_rows", 3)),
+    "inspect": lambda p: engine.inspect(
+        p["pdf_path"], p.get("max_pages", 5), p.get("sample_rows", 3), p.get("table_strategy", "auto")),
     "match_pattern": lambda p: engine.match_pattern(p["pdf_path"], p["pattern"], p.get("pages"), p.get("limit", 20)),
     "validate_config": lambda p: engine.validate_config(p["config"]),
     "convert": lambda p: engine.convert(p["pdf_path"], p["config"], p["out_tmp_path"], p.get("preview_n", 3)),

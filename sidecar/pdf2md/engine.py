@@ -24,7 +24,7 @@ def _json_safe(v: Any) -> Any:
     return v
 
 
-def inspect(pdf_path: str, max_pages: int = 5, sample_rows: int = 3) -> dict:
+def inspect(pdf_path: str, max_pages: int = 5, sample_rows: int = 3, table_strategy: str = "auto") -> dict:
     """Cheap structural scan to drive the config editor."""
     with open_pdf(pdf_path) as pdf:
         n = len(pdf.pages)
@@ -34,7 +34,7 @@ def inspect(pdf_path: str, max_pages: int = 5, sample_rows: int = 3) -> dict:
             page = pdf.pages[pi]
             if page_has_text(page):
                 has_text = True
-            for ti, tbl in enumerate(page.extract_tables()):
+            for ti, tbl in enumerate(extract_table.find_tables(page, table_strategy)):
                 rows = [[extract_table.clean_cell(c) for c in r] for r in tbl]
                 rows = [r for r in rows if any(r)]
                 if not rows:
