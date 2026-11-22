@@ -94,6 +94,11 @@ pub async fn match_pattern(core: Core<'_>, file_id: String, pattern: String, pag
 }
 
 #[tauri::command]
+pub async fn outline_file(core: Core<'_>, file_id: String, rule: Value) -> AppResult<Value> {
+    core.outline(&file_id, rule).await
+}
+
+#[tauri::command]
 pub async fn validate_config(core: Core<'_>, config: Value) -> AppResult<Value> {
     core.validate_config(config).await
 }

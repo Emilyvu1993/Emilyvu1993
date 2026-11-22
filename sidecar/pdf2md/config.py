@@ -8,6 +8,8 @@ from .errors import INVALID_CONFIG, REGEX_INVALID, ConvertError
 
 TRANSFORM_RE = re.compile(r"^(trim|upper|lower|number|number:eu|date:.+)$")
 OUTPUT_MODES = {"single_file", "file_per_record"}
+HEADING_MODES = {"font", "numbering", "regex"}
+SECTION_BOOLS = ("bold_headings", "include_preamble", "join_lines", "skip_header_footer", "normalize_unicode")
 
 
 def _req(d: dict, key: str, path: str) -> Any:
@@ -23,11 +25,31 @@ def compile_regex(pattern: str, where: str) -> re.Pattern:
         raise ConvertError(REGEX_INVALID, f"Invalid regex in {where}: {e}", {"pattern": pattern, "where": where}) from e
 
 
-def validate(cfg: Any) -> dict:
-    if not isinstance(cfg, dict):
-        raise ConvertError(INVALID_CONFIG, "Config must be an object")
+def _is_num(v: Any) -> bool:
+    return isinstance(v, (int, float)) and not isinstance(v, bool)
 
-    ex = _req(cfg, "extraction", "")
+
+def validate_sections(ex: dict) -> None:
+    mode = ex.get("heading_mode", "font")
+    if mode not in HEADING_MODES:
+        raise ConvertError(INVALID_CONFIG, f"'extraction.heading_mode' must be one of {sorted(HEADING_MODES)}")
+    r = ex.get("size_ratio", 1.15)
+    if not _is_num(r) or not 1.0 <= r <= 4.0:
+        raise ConvertError(INVALID_CONFIG, "'extraction.size_ratio' must be a number between 1.0 and 4.0")
+    m = ex.get("max_heading_chars", 120)
+    if not isinstance(m, int) or isinstance(m, bool) or not 1 <= m <= 500:
+        raise ConvertError(INVALID_CONFIG, "'extraction.max_heading_chars' must be an integer between 1 and 500")
+    for k in SECTION_BOOLS:
+        if k in ex and not isinstance(ex[k], bool):
+            raise ConvertError(INVALID_CONFIG, f"'extraction.{k}' must be true or false")
+    if mode == "regex":
+        hp = ex.get("heading_pattern")
+        if not isinstance(hp, str) or not hp:
+            raise ConvertError(INVALID_CONFIG, "'extraction.heading_pattern' is required when heading_mode is 'regex'")
+        compile_regex(hp, "extraction.heading_pattern")
+
+
+def validate_extraction(ex: Any) -> None:
     if not isinstance(ex, dict):
         raise ConvertError(INVALID_CONFIG, "'extraction' must be an object")
     t = ex.get("type")
@@ -52,8 +74,17 @@ def validate(cfg: Any) -> dict:
             raise ConvertError(INVALID_CONFIG, "'extraction.field_patterns' must be an object")
         for k, v in fp.items():
             compile_regex(v, f"extraction.field_patterns.{k}")
+    elif t == "sections":
+        validate_sections(ex)
     else:
-        raise ConvertError(INVALID_CONFIG, "'extraction.type' must be 'table' or 'block'")
+        raise ConvertError(INVALID_CONFIG, "'extraction.type' must be 'table', 'block' or 'sections'")
+
+
+def validate(cfg: Any) -> dict:
+    if not isinstance(cfg, dict):
+        raise ConvertError(INVALID_CONFIG, "Config must be an object")
+
+    validate_extraction(_req(cfg, "extraction", ""))
 
     fields = cfg.get("fields", []) or []
     if not isinstance(fields, list):

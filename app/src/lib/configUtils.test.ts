@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_CONFIG } from "../types/domain";
-import { availableSources, conversionKey, fieldsFromColumns, stableStringify, templateFromFields, toIdentifier } from "./configUtils";
+import { DEFAULT_CONFIG, DEFAULT_SECTIONS_RULE, SECTION_FIELDS } from "../types/domain";
+import { templateVariables, availableSources, conversionKey, fieldsFromColumns, stableStringify, templateFromFields, toIdentifier } from "./configUtils";
 
 describe("configUtils", () => {
   it("stableStringify sorts keys and drops undefined", () => {
@@ -28,5 +28,11 @@ describe("configUtils", () => {
   it("block sources come from named groups and field patterns", () => {
     const c = { ...DEFAULT_CONFIG, extraction: { type: "block" as const, start_pattern: "^No (?P<inv>\\d+)", field_patterns: { total: "T: (.+)" } } };
     expect(availableSources(c, [])).toEqual(["inv", "total", "_raw", "_page"]);
+  });
+  it("sections expose fixed fields as sources and template variables", () => {
+    const c = { ...DEFAULT_CONFIG, extraction: { ...DEFAULT_SECTIONS_RULE } };
+    expect(availableSources(c, [])).toEqual([...SECTION_FIELDS, "_page"]);
+    expect(templateVariables(c)).toEqual(SECTION_FIELDS);
+    expect(templateVariables({ ...c, fields: [{ source: "title", target: "t" }] })).toEqual(["t"]);
   });
 });

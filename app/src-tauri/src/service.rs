@@ -167,6 +167,10 @@ impl AppCore {
             .call("match_pattern", json!({ "pdf_path": p, "pattern": pattern, "pages": pages }), INSPECT_TIMEOUT)
             .await
     }
+    pub async fn outline(&self, file_id: &str, rule: Value) -> AppResult<Value> {
+        let p = self.pdf_abs(file_id)?;
+        self.sidecar.call("outline", json!({ "pdf_path": p, "rule": rule }), INSPECT_TIMEOUT).await
+    }
     pub async fn validate_config(&self, cfg: Value) -> AppResult<Value> {
         self.sidecar.call("validate_config", json!({ "config": cfg }), INSPECT_TIMEOUT).await
     }

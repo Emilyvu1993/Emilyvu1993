@@ -153,7 +153,7 @@ def test_file_per_record(fx, block_cfg, tmp_path):
     block_cfg["output"] = {"mode": "file_per_record", "filename_pattern": "{{ invoice }}"}
     out = tmp_path / "stage"
     r = engine.convert(fx["blocks"], block_cfg, str(out))
-    assert sorted(os.listdir(out)) == [f"INV_00{i}.md" for i in range(1, 6)]
+    assert sorted(os.listdir(out)) == [f"INV-00{i}.md" for i in range(1, 6)]
     assert len(r["outputs"]) == 5
 
 

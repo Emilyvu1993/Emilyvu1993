@@ -1,4 +1,4 @@
-import type { FieldMapping, OutputConfigDraft, TemplateSpec } from "../types/domain";
+import { SECTION_FIELDS, type FieldMapping, type OutputConfigDraft, type TemplateSpec } from "../types/domain";
 
 /** Stable stringify (sorted keys) — mirrors the Rust conversion hash inputs. */
 export function stableStringify(v: unknown): string {
@@ -64,6 +64,7 @@ export function templateFromFields(fields: FieldMapping[], preset: TemplatePrese
 }
 
 export function availableSources(c: OutputConfigDraft, detectedColumns: string[]): string[] {
+  if (c.extraction.type === "sections") return [...SECTION_FIELDS, "_page"];
   if (c.extraction.type === "block") {
     const groups = [...c.extraction.start_pattern.matchAll(/\(\?P<(\w+)>/g)].map((m) => m[1]);
     return [...new Set([...groups, ...Object.keys(c.extraction.field_patterns), "_raw", "_page"])];
@@ -72,5 +73,6 @@ export function availableSources(c: OutputConfigDraft, detectedColumns: string[]
 }
 
 export function templateVariables(c: OutputConfigDraft): string[] {
-  return c.fields.length ? c.fields.map((f) => f.target) : [];
+  if (c.fields.length) return c.fields.map((f) => f.target);
+  return c.extraction.type === "sections" ? SECTION_FIELDS : [];
 }

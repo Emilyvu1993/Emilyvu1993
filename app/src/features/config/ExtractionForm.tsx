@@ -1,7 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api, toAppError } from "../../lib/api";
 import { fieldsFromColumns, templateFromFields } from "../../lib/configUtils";
-import type { AppError, BlockRule, InspectResult, MatchResult, OutputConfigDraft, TableRule } from "../../types/domain";
+import {
+  DEFAULT_SECTIONS_RULE, SECTIONS_TEMPLATE,
+  type AppError, type BlockRule, type InspectResult, type MatchResult, type OutlineResult, type OutputConfigDraft,
+  type SectionsRule, type TableRule,
+} from "../../types/domain";
 
 type Upd = (fn: (d: OutputConfigDraft) => OutputConfigDraft) => void;
 
@@ -15,8 +19,20 @@ export function ExtractionForm({ fileId, draft, update, inspect }: {
   fileId: string; draft: OutputConfigDraft; update: Upd; inspect?: InspectResult | AppError;
 }) {
   const ex = draft.extraction;
-  const setEx = (patch: Partial<TableRule> | Partial<BlockRule>) =>
+  const setEx = (patch: Partial<TableRule> | Partial<BlockRule> | Partial<SectionsRule>) =>
     update((d) => ({ ...d, extraction: { ...d.extraction, ...patch } as OutputConfigDraft["extraction"] }));
+  const switchType = (t: OutputConfigDraft["extraction"]["type"]) => {
+    if (ex.type === t) return;
+    const dirty = draft.fields.length > 0 || draft.template.record.trim() !== "";
+    if (t === "sections" && dirty && !confirm("Switching to Text sections resets the field mapping and template. Continue?")) return;
+    update((d) => {
+      const extraction = t === "table" ? { ...DEFAULT_TABLE } : t === "block" ? { ...DEFAULT_BLOCK } : { ...DEFAULT_SECTIONS_RULE };
+      if (t === "sections") return { ...d, extraction, fields: [], template: { ...SECTIONS_TEMPLATE } };
+      // leaving sections: its fields/template don't exist in table/block data
+      const leaving = d.extraction.type === "sections";
+      return { ...d, extraction, ...(leaving ? { fields: [], template: d.template.record.trim() === SECTIONS_TEMPLATE.record.trim() ? { ...d.template, record: "" } : d.template } : {}) };
+    });
+  };
   const insp = inspect && "page_count" in inspect ? inspect : undefined;
   const inspErr = inspect && "code" in inspect ? inspect : undefined;
 
@@ -25,10 +41,9 @@ export function ExtractionForm({ fileId, draft, update, inspect }: {
       <div className="card-head">
         <h2>1 · Extract records</h2>
         <div className="seg" role="radiogroup" aria-label="Extraction type">
-          {(["table", "block"] as const).map((t) => (
-            <button key={t} role="radio" aria-checked={ex.type === t} className={ex.type === t ? "on" : ""}
-              onClick={() => ex.type !== t && update((d) => ({ ...d, extraction: t === "table" ? { ...DEFAULT_TABLE } : { ...DEFAULT_BLOCK } }))}>
-              {t === "table" ? "Table rows" : "Text blocks (regex)"}
+          {(["table", "block", "sections"] as const).map((t) => (
+            <button key={t} role="radio" aria-checked={ex.type === t} className={ex.type === t ? "on" : ""} onClick={() => switchType(t)}>
+              {t === "table" ? "Table rows" : t === "block" ? "Text blocks (regex)" : "Text sections (headings)"}
             </button>
           ))}
         </div>
@@ -39,6 +54,12 @@ export function ExtractionForm({ fileId, draft, update, inspect }: {
           {insp.page_count} page{insp.page_count === 1 ? "" : "s"} · {insp.tables.length} table{insp.tables.length === 1 ? "" : "s"} detected in first {insp.pages_scanned}
           {!insp.has_text && <span className="warn-text"> · no text layer (scanned PDF). Conversion will fail.</span>}
         </p>
+      )}
+      {ex.type === "table" && insp && insp.has_text && insp.tables.length === 0 && (
+        <div className="banner warn small" role="status">
+          No tables detected. This looks like a text document.
+          <button className="link" onClick={() => switchType("sections")}>Use Text sections</button>
+        </div>
       )}
       {inspErr && <p className="warn-text small">Couldn't inspect this file: {inspErr.code}: {inspErr.message}</p>}
 
@@ -69,10 +90,14 @@ export function ExtractionForm({ fileId, draft, update, inspect }: {
               Merge across pages (drops repeated headers)
             </label>
           </>
-        ) : (
+        ) : ex.type === "block" ? (
           <BlockFields fileId={fileId} rule={ex} setEx={setEx} />
+        ) : (
+          <SectionsFields rule={ex} setEx={setEx} />
         )}
       </div>
+
+      {ex.type === "sections" && <OutlinePanel fileId={fileId} rule={ex} />}
 
       {ex.type === "table" && insp && insp.tables.length > 0 && (
         <div className="detected">
@@ -89,7 +114,7 @@ export function ExtractionForm({ fileId, draft, update, inspect }: {
           ))}
         </div>
       )}
-      {ex.type === "block" && insp && (
+      {ex.type !== "table" && insp && (
         <details className="text-sample"><summary>PDF text sample</summary><pre>{insp.text_sample || "(empty)"}</pre></details>
       )}
     </section>
@@ -148,6 +173,99 @@ function BlockFields({ fileId, rule, setEx }: { fileId: string; rule: BlockRule;
             </>
           )}
         </div>
+      )}
+    </div>
+  );
+}
+
+function SectionsFields({ rule, setEx }: { rule: SectionsRule; setEx: (p: Partial<SectionsRule>) => void }) {
+  const num = (v: string, d: number) => (Number.isFinite(parseFloat(v)) ? parseFloat(v) : d);
+  return (
+    <>
+      <label>Heading detection
+        <select value={rule.heading_mode} onChange={(e) => setEx({ heading_mode: e.target.value as SectionsRule["heading_mode"] })}>
+          <option value="font">By font (size / bold)</option>
+          <option value="numbering">By numbering (Chương, Điều, 1.1 …)</option>
+          <option value="regex">By regex (advanced)</option>
+        </select>
+      </label>
+      {rule.heading_mode === "font" && (
+        <>
+          <label>Heading size ≥ body ×
+            <input type="number" step={0.05} min={1} max={4} value={rule.size_ratio}
+              onChange={(e) => setEx({ size_ratio: Math.min(4, Math.max(1, num(e.target.value, 1.15))) })} />
+          </label>
+          <label className="check">
+            <input type="checkbox" checked={rule.bold_headings} onChange={(e) => setEx({ bold_headings: e.target.checked })} />
+            Short bold lines are headings too
+          </label>
+        </>
+      )}
+      {rule.heading_mode === "regex" && (
+        <label className="span-all">Heading pattern <span className="muted">(a line that matches starts a new section)</span>
+          <input className="mono" value={rule.heading_pattern ?? ""} placeholder="^\\d+\\.\\s" onChange={(e) => setEx({ heading_pattern: e.target.value })} />
+        </label>
+      )}
+      {rule.heading_mode === "numbering" && (
+        <p className="muted small span-all">
+          Recognised: Phần / Chương / Mục / Điều (Part / Chapter / Section / Article), <span className="mono">I.</span>,{" "}
+          <span className="mono">1.</span>, <span className="mono">1.1</span>, <span className="mono">1.1.1</span>. Levels follow the hierarchy found in the document.
+        </p>
+      )}
+      <label>Max heading length (chars)
+        <input type="number" min={1} max={500} value={rule.max_heading_chars}
+          onChange={(e) => setEx({ max_heading_chars: Math.min(500, Math.max(1, Math.round(num(e.target.value, 120)))) })} />
+      </label>
+      <div className="span-all checks">
+        <label className="check"><input type="checkbox" checked={rule.include_preamble} onChange={(e) => setEx({ include_preamble: e.target.checked })} />Keep text before the first heading</label>
+        <label className="check"><input type="checkbox" checked={rule.join_lines} onChange={(e) => setEx({ join_lines: e.target.checked })} />Join wrapped lines into paragraphs</label>
+        <label className="check"><input type="checkbox" checked={rule.skip_header_footer} onChange={(e) => setEx({ skip_header_footer: e.target.checked })} />Drop running headers/footers &amp; page numbers</label>
+        <label className="check"><input type="checkbox" checked={rule.normalize_unicode} onChange={(e) => setEx({ normalize_unicode: e.target.checked })} />Normalise Unicode (NFC): same text, stable diacritics</label>
+      </div>
+    </>
+  );
+}
+
+function OutlinePanel({ fileId, rule }: { fileId: string; rule: SectionsRule }) {
+  const [st, setSt] = useState<{ loading: boolean; res?: OutlineResult; err?: AppError }>({ loading: true });
+  const key = JSON.stringify(rule);
+  useEffect(() => {
+    let alive = true;
+    setSt((p) => ({ ...p, loading: true }));
+    const h = setTimeout(() => {
+      api.outline(fileId, rule)
+        .then((res) => alive && setSt({ loading: false, res }))
+        .catch((e) => alive && setSt({ loading: false, err: toAppError(e) }));
+    }, 450);
+    return () => { alive = false; clearTimeout(h); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fileId, key]);
+
+  const { res, err, loading } = st;
+  return (
+    <div className="outline-panel" aria-live="polite">
+      <div className="eyebrow">Detected headings {loading && <span className="muted">· updating…</span>}</div>
+      {err && <div className="warn-text small">{err.code}: {err.message}</div>}
+      {res && res.total === 0 && (
+        <div className="warn-text small">
+          No headings found. Lower the size ratio, allow bold headings, or switch detection mode.
+          <div className="cols">Font sizes in this file:{" "}
+            {res.font_sizes.map((f) => <span key={f.size} className="chip">{f.size}pt{f.size === res.body_size ? " (body)" : ""}</span>)}
+          </div>
+        </div>
+      )}
+      {res && res.total > 0 && (
+        <>
+          <div className="small muted">{res.total} heading{res.total === 1 ? "" : "s"} → {res.total} record{res.total === 1 ? "" : "s"} · body text {res.body_size}pt</div>
+          <ol className="outline">
+            {res.headings.map((h, i) => (
+              <li key={i} style={{ paddingLeft: (h.level - 1) * 16 }}>
+                <span className="lvl">H{h.level}</span> <span className="ol-title">{h.title}</span> <span className="muted small">p.{h.page}</span>
+              </li>
+            ))}
+          </ol>
+          {res.total > res.headings.length && <div className="muted small">…and {res.total - res.headings.length} more</div>}
+        </>
       )}
     </div>
   );

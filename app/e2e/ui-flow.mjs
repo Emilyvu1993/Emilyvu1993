@@ -18,11 +18,11 @@ const step = (s) => console.log("✓", s);
 await page.goto(URL);
 await page.getByRole("button", { name: /open or create workspace/i }).click();
 await page.getByRole("button", { name: /add pdf files/i }).click();
-await page.getByText("3 added").waitFor();
+await page.getByText("4 added").waitFor();
 const radios = page.getByRole("radio", { name: /\.pdf/ });
-assert.equal(await radios.count(), 3);
+assert.equal(await radios.count(), 4);
 assert.equal(await page.getByRole("radiogroup", { name: "Active file" }).locator('[aria-checked=true]').count(), 1);
-step("upload 3 files, exactly 1 active");
+step("upload 4 files, exactly 1 active");
 
 // configure from detected table
 await page.getByRole("button", { name: /p\.1 · #1/ }).click();
@@ -88,6 +88,37 @@ await page.getByRole("button", { name: "Convert & preview" }).click();
 await page.getByText(/Preview · top 3 of 12 records/).waitFor();
 await shot("4-block-preview");
 step("block/regex rule with pattern tester");
+
+// text document (no tables): split into records by heading
+await radios.nth(3).click();
+await page.getByRole("heading", { name: "annual-report.pdf" }).waitFor();
+await page.getByText(/No tables detected/).waitFor();
+await page.getByRole("button", { name: "Use Text sections" }).click();
+await page.getByText(/7 headings → 7 records/).waitFor();
+await page.getByLabel(/Short bold lines/).uncheck();
+await page.getByText(/6 headings → 6 records/).waitFor();          // outline reacts to detection settings
+await page.getByLabel(/Short bold lines/).check();
+await page.getByRole("button", { name: "Convert & preview" }).click();
+await page.getByText(/Preview · top 3 of 7 records/).waitFor();
+assert.equal(await page.locator(".md h1").first().innerText(), "Tổng quan");   // original language kept
+assert.equal(await page.locator(".md h2").first().innerText(), "Bối cảnh thị trường");
+await shot("5-text-sections");
+step("text document: heading outline, top-3 preview, original language kept");
+
+await page.getByLabel("Heading detection").selectOption("numbering");
+await page.getByText(/4 headings → 4 records/).waitFor();
+step("numbering mode (Chương/Điều)");
+
+// no headings found -> actionable error, config kept
+await page.getByLabel("Heading detection").selectOption("font");
+await page.getByLabel(/Short bold lines/).uncheck();
+await page.getByLabel(/Heading size/).fill("3");
+await page.getByText(/No headings found/).waitFor();
+await page.getByRole("button", { name: "Convert & preview" }).click();
+await page.getByRole("alert").getByText("NO_RECORDS_FOUND").waitFor();
+assert.equal(await page.getByLabel(/^Record/).inputValue(), "{{ markdown }}\n");
+await shot("6-no-headings-error");
+step("no headings: error with hint, template kept");
 
 await browser.close();
 console.log(process.exitCode ? "FAILED" : "ALL UI FLOWS PASSED");

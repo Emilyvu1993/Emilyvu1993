@@ -2,16 +2,28 @@
 from __future__ import annotations
 
 import os
+import re
 from decimal import Decimal
 from typing import Any
 
-from . import extract_block, extract_table
-from .config import compile_regex, validate
+from . import extract_block, extract_sections, extract_table
+from .config import compile_regex, validate, validate_extraction
 from .errors import OUTPUT_WRITE_FAILED, ConvertError
-from .mapping import sanitize_key
 from .mapping import map_records
 from .pdfio import ensure_text_layer, open_pdf, page_has_text, parse_pages, release
 from .render import compile_templates, render_frame, render_record
+
+
+_RESERVED = {"CON", "PRN", "AUX", "NUL", *(f"COM{i}" for i in range(1, 10)), *(f"LPT{i}" for i in range(1, 10))}
+
+
+def safe_filename(name: str, fallback: str) -> str:
+    """Filesystem-safe name that keeps Unicode letters (Vietnamese) and a readable shape."""
+    s = re.sub(r"[^\w\-. ]+", "_", name, flags=re.UNICODE)
+    s = re.sub(r"\s+", "_", s).strip("._ ")[:80].rstrip("._ ")
+    if not s:
+        return fallback
+    return f"_{s}" if s.upper() in _RESERVED else s
 
 
 def _json_safe(v: Any) -> Any:
@@ -77,6 +89,16 @@ def match_pattern(pdf_path: str, pattern: str, pages: str | None = None, limit: 
         return {"total": total, "hits": hits}
 
 
+def outline(pdf_path: str, rule: dict, limit: int = 60) -> dict:
+    """Detected headings for a `sections` rule (no template/fields needed)."""
+    rule = {**rule, "type": "sections"}
+    validate_extraction(rule)
+    with open_pdf(pdf_path) as pdf:
+        pages = parse_pages(rule.get("pages"), len(pdf.pages))
+        ensure_text_layer(pdf, pages)
+        return extract_sections.outline(pdf, pages, rule, limit)
+
+
 def validate_config(config: dict) -> dict:
     validate(config)
     compile_templates(config["template"])
@@ -119,7 +141,7 @@ def convert(pdf_path: str, config: dict, out_tmp_path: str, preview_n: int = 3) 
     with open_pdf(pdf_path) as pdf:
         pages = parse_pages(rule.get("pages"), len(pdf.pages))
         ensure_text_layer(pdf, pages)
-        mod = extract_table if rule["type"] == "table" else extract_block
+        mod = {"table": extract_table, "block": extract_block, "sections": extract_sections}[rule["type"]]
         columns, raw = mod.extract(pdf, pages, rule)
 
     records = map_records(columns, raw, config.get("fields") or [])
@@ -147,7 +169,7 @@ def convert(pdf_path: str, config: dict, out_tmp_path: str, preview_n: int = 3) 
         name_tpl = _env().from_string((config.get("output") or {}).get("filename_pattern") or "record_{{ index }}")
         used: set[str] = set()
         for i, (r, b) in enumerate(zip(records, bodies)):
-            name = sanitize_key(name_tpl.render(**r, index=i + 1, record=r)) or f"record_{i + 1}"
+            name = safe_filename(name_tpl.render(**r, index=i + 1, record=r), f"record_{i + 1}")
             while name in used:
                 name += "_"
             used.add(name)

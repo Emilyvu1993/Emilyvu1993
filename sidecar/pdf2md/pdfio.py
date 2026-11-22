@@ -13,6 +13,7 @@ from pdfminer.pdfparser import PDFSyntaxError
 from .errors import (
     INVALID_PAGES,
     NO_TEXT_LAYER,
+    TEXT_ENCODING_BROKEN,
     PDF_CORRUPT,
     PDF_ENCRYPTED,
     PDF_NOT_FOUND,
@@ -70,15 +71,35 @@ def page_has_text(page) -> bool:
     return any(c.get("text", "").strip() for c in page.chars)
 
 
+def cid_ratio(page) -> float:
+    """Share of glyphs the PDF could not map to Unicode (pdfminer emits '(cid:N)')."""
+    chars = [c for c in page.chars if c.get("text", "").strip()]
+    if not chars:
+        return 0.0
+    return sum(1 for c in chars if c["text"].startswith("(cid:")) / len(chars)
+
+
 def ensure_text_layer(pdf: pdfplumber.PDF, pages: list[int]) -> None:
+    sample = []
     for i in pages:
         if page_has_text(pdf.pages[i]):
-            return
-    raise ConvertError(
-        NO_TEXT_LAYER,
-        "No selectable text found (scanned/image PDF is not supported)",
-        {"pages_checked": [p + 1 for p in pages]},
-    )
+            sample.append(i)
+            if len(sample) == 3:
+                break
+    if not sample:
+        raise ConvertError(
+            NO_TEXT_LAYER,
+            "No selectable text found (scanned/image PDF is not supported)",
+            {"pages_checked": [p + 1 for p in pages]},
+        )
+    for i in sample:
+        r = cid_ratio(pdf.pages[i])
+        if r > 0.3:
+            raise ConvertError(
+                TEXT_ENCODING_BROKEN,
+                "Text cannot be decoded: the PDF's fonts have no Unicode mapping, so the text would be garbled",
+                {"page": i + 1, "unmapped_ratio": round(r, 2)},
+            )
 
 
 def release(page) -> None:

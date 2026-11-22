@@ -106,6 +106,14 @@ label.check input { width: auto; }
 .convert-bar { position: sticky; bottom: 0; display: flex; justify-content: space-between; align-items: center; gap: 12px;
   background: linear-gradient(transparent, var(--bg) 30%); padding: 18px 0 14px; }
 
+.checks { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 6px 14px; }
+.checks label.check { align-self: auto; padding: 0; }
+.outline-panel { display: flex; flex-direction: column; gap: 6px; background: var(--panel-2); border-radius: 6px; padding: 10px 12px; }
+.outline { list-style: none; margin: 0; padding: 0; max-height: 220px; overflow: auto; display: flex; flex-direction: column; gap: 3px; font-size: 13px; }
+.outline .lvl { font: 600 10px var(--mono); background: var(--accent-soft); color: var(--accent); border-radius: 3px; padding: 1px 4px; }
+.outline .ol-title { word-break: break-word; }
+.banner .link { margin-left: 6px; }
+
 /* banners */
 .banner { display: flex; gap: 8px; border-radius: var(--radius); padding: 10px 12px; margin-bottom: 12px; border: 1px solid; }
 .banner.error { background: var(--danger-soft); border-color: var(--danger); }

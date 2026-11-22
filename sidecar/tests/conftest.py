@@ -1,12 +1,17 @@
 """PDF fixtures generated at test time (no binary files in git)."""
 from __future__ import annotations
 
+import os
+
 import pytest
 from pypdf import PdfReader, PdfWriter
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
-from reportlab.platypus import PageBreak, SimpleDocTemplate, Table, TableStyle
+from reportlab.lib.styles import ParagraphStyle
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 HEADER = ["Date", "Description", "Amount"]
 
@@ -19,6 +24,28 @@ def _table(data):
     t = Table(data)
     t.setStyle(TableStyle([("GRID", (0, 0), (-1, -1), 0.5, colors.black)]))
     return t
+
+
+DEJAVU = "/usr/share/fonts/truetype/dejavu/"
+LOREM = ("Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore "
+         "et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut "
+         "aliquip ex ea commodo consequat. ")
+
+
+def _doc(path, story, font="Helvetica", bold="Helvetica-Bold"):
+    def page(c, d):
+        c.setFont(font, 8)
+        c.drawString(50, 810, "ACME Confidential Report")        # running header
+        c.drawCentredString(298, 25, f"Page {d.page}")             # page number
+    SimpleDocTemplate(str(path), pagesize=A4, topMargin=70, bottomMargin=60).build(story, onFirstPage=page, onLaterPages=page)
+
+
+def _styles(font="Helvetica", bold="Helvetica-Bold", h1=18, h2=13, body=10, bold_same_size=False):
+    return (
+        ParagraphStyle("h1", fontName=bold, fontSize=body if bold_same_size else h1, leading=(h1 + 4), spaceBefore=10, spaceAfter=6),
+        ParagraphStyle("h2", fontName=bold, fontSize=body if bold_same_size else h2, leading=h2 + 4, spaceBefore=8, spaceAfter=4),
+        ParagraphStyle("p", fontName=font, fontSize=body, leading=body + 3, spaceAfter=8),
+    )
 
 
 @pytest.fixture(scope="session")
@@ -69,6 +96,44 @@ def fx(tmp_path_factory):
         w.write(fh)
     paths["encrypted"] = str(p)
 
+    # ---- text documents ----
+    h1, h2, pp = _styles()
+    story = [Paragraph("Annual Report", h1), Paragraph("Intro text. " + LOREM, pp)]
+    story += [Paragraph("1. Results", h1), Paragraph(LOREM * 6, pp), Paragraph("1.1 Revenue", h2), Paragraph(LOREM * 3, pp),
+              Paragraph("&bull; first point", pp), Paragraph("&bull; second point", pp)]
+    story += [PageBreak(), Paragraph("2. Outlook", h1), Paragraph(LOREM * 5, pp), Paragraph("2.1 Risks", h2), Paragraph(LOREM * 4, pp)]
+    story += [PageBreak(), Paragraph("3. Appendix", h1), Paragraph(LOREM * 2, pp)]
+    p = d / "text_report.pdf"
+    _doc(p, story)
+    paths["text_report"] = str(p)
+
+    h1, h2, pp = _styles(bold_same_size=True)
+    p = d / "text_boldheads.pdf"
+    _doc(p, [Paragraph("Scope", h1), Paragraph(LOREM, pp), PageBreak(), Paragraph("Terms", h1), Paragraph(LOREM, pp)])
+    paths["text_boldheads"] = str(p)
+
+    p = d / "text_flat.pdf"
+    _doc(p, [Paragraph(LOREM * 3, ParagraphStyle("f", fontName="Helvetica", fontSize=10, leading=13)) for _ in range(3)])
+    paths["text_flat"] = str(p)
+
+    if os.path.isfile(DEJAVU + "DejaVuSans.ttf"):
+        pdfmetrics.registerFont(TTFont("DJ", DEJAVU + "DejaVuSans.ttf"))
+        pdfmetrics.registerFont(TTFont("DJ-B", DEJAVU + "DejaVuSans-Bold.ttf"))
+        h1, h2, pp = _styles("DJ", "DJ-B", h1=12, h2=12, body=11)  # same size & bold: numbering mode only
+        vn = "Tổ chức, cá nhân có quyền sử dụng đất theo quy định của pháp luật hiện hành. "
+        p = d / "legal_vi.pdf"
+        _doc(p, [
+            Paragraph("Chương I", h1), Paragraph("QUY ĐỊNH CHUNG", h1),
+            Paragraph("Điều 1. Phạm vi điều chỉnh", h2), Paragraph(vn * 3, pp),
+            Paragraph("Điều 2. Đối tượng áp dụng", h2), Paragraph(vn * 2 + "1. Cá nhân; 2. Tổ chức.", pp),
+            PageBreak(), Paragraph("Chương II", h1), Paragraph("QUYỀN VÀ NGHĨA VỤ", h1),
+            Paragraph("Điều 3. Quyền của người sử dụng đất", h2), Paragraph(vn * 4, pp),
+        ], "DJ", "DJ-B")
+        paths["legal_vi"] = str(p)
+        p = d / "legal_vi_1page.pdf"
+        _doc(p, [Paragraph("Điều 1. Phạm vi điều chỉnh", h2), Paragraph(vn * 2, pp)], "DJ", "DJ-B")
+        paths["legal_vi_1page"] = str(p)
+
     p = d / "corrupt.pdf"
     p.write_bytes(b"%PDF-1.7\nthis is not really a pdf\n%%EOF")
     paths["corrupt"] = str(p)
@@ -106,4 +171,14 @@ def block_cfg():
             {"source": "total", "target": "total", "transform": "number"},
         ],
         "template": {"record": "## {{ invoice }}\n- Customer: {{ customer }}\n- Total: {{ total }}\n"},
+    }
+
+
+@pytest.fixture
+def sec_cfg():
+    return {
+        "extraction": {"type": "sections", "heading_mode": "font"},
+        "fields": [],
+        "template": {"record": "{{ markdown }}\n"},
+        "output": {"mode": "single_file"},
     }

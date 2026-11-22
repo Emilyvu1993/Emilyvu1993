@@ -45,7 +45,42 @@ export interface BlockRule {
   field_patterns: Record<string, string>;
 }
 
-export type ExtractionRule = TableRule | BlockRule;
+export type HeadingMode = "font" | "numbering" | "regex";
+
+/** Split a text document into records by heading. Fields: see SECTION_FIELDS. */
+export interface SectionsRule {
+  type: "sections";
+  pages?: string;
+  heading_mode: HeadingMode;
+  size_ratio: number;
+  bold_headings: boolean;
+  max_heading_chars: number;
+  heading_pattern?: string;
+  include_preamble: boolean;
+  join_lines: boolean;
+  skip_header_footer: boolean;
+  normalize_unicode: boolean;
+}
+
+export type ExtractionRule = TableRule | BlockRule | SectionsRule;
+
+export const SECTION_FIELDS = ["title", "level", "heading", "body", "markdown", "page", "page_end", "word_count"];
+
+export const DEFAULT_SECTIONS_RULE: SectionsRule = {
+  type: "sections", pages: "", heading_mode: "font", size_ratio: 1.15, bold_headings: true, max_heading_chars: 120,
+  heading_pattern: "", include_preamble: true, join_lines: true, skip_header_footer: true, normalize_unicode: true,
+};
+
+/** `markdown` = heading + body, ready to use. */
+export const SECTIONS_TEMPLATE: TemplateSpec = { header: "", record: "{{ markdown }}\n", footer: "", separator: "\n" };
+
+export interface OutlineHeading { title: string; level: number; page: number; size: number }
+export interface OutlineResult {
+  body_size: number;
+  total: number;
+  headings: OutlineHeading[];
+  font_sizes: { size: number; chars: number; bold_chars: number }[];
+}
 
 export type Transform = "" | "trim" | "upper" | "lower" | "number" | "number:eu" | `date:${string}`;
 

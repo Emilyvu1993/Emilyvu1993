@@ -29,6 +29,7 @@ pub fn run() {
             commands::delete_config,
             commands::inspect_file,
             commands::match_pattern,
+            commands::outline_file,
             commands::validate_config,
             commands::convert,
             commands::save_output,

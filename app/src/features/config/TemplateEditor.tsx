@@ -46,6 +46,7 @@ export function TemplateEditor({ draft, update }: { draft: OutputConfigDraft; up
           <button key={v} className="chip mono" disabled={!vars.length} onClick={() => insert(v)} title="Insert into record template">{v}</button>
         ))}
         <span className="chip mono ghost-chip">index</span>
+        {draft.extraction.type === "sections" && <span className="muted small">· <code>markdown</code> = heading + body, ready to use ·</span>}
         <span className="muted small">· Header/footer: <code>count</code>, <code>source_file</code>, <code>records</code> · filter <code>| md</code> escapes pipes</span>
       </div>
 

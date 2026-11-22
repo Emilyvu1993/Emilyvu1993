@@ -2,6 +2,20 @@
 
 Desktop app (Tauri + React + Python sidecar) that turns **text-based PDFs** into Markdown using
 **record extraction + a Jinja template**, with a top-3 preview before anything is saved.
+
+## Extraction types
+| Type | For | A record is |
+|---|---|---|
+| Table rows | statements, ledgers | one table row (ruled or borderless) |
+| Text blocks (regex) | repeated forms, invoices | text from one start-pattern match to the next |
+| **Text sections (headings)** | reports, contracts, legal text | one section: heading + its body |
+
+Text sections detect headings **by font** (size / bold), **by numbering** (Phần/Chương/Mục/Điều, `I.`, `1.`, `1.1`…) or **by regex**.
+Fields: `title, level, heading, body, markdown, page, page_end, word_count`; `{{ markdown }}` is the ready-made default.
+Text is never translated: original language and diacritics are kept (Unicode normalised to NFC, switchable).
+Limits: running headers/footers are recognised from repetition, so a **1-page** document cannot be cleaned;
+PDFs whose fonts lack a Unicode map (e.g. legacy Vietnamese fonts) are rejected with `TEXT_ENCODING_BROKEN` instead of producing garbage.
+Uploads: `.pdf` only, max 2 MB.
 Design: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Behaviour
@@ -21,8 +35,8 @@ npm run dev                # browser-only UI with the mock backend (no Rust/Pyth
 
 ## Tests
 ```bash
-cd sidecar && ../.venv/bin/python -m pytest -q      # engine + RPC (28)
-cd app/src-tauri && cargo test                      # store, atomic save, sidecar, full flow (14)
+cd sidecar && ../.venv/bin/python -m pytest -q      # engine + RPC + sections (68)
+cd app/src-tauri && cargo test                      # store, atomic save, sidecar, full flows (16)
 cd app && npm test && npm run typecheck             # UI utils
 cd app && npm run dev & node e2e/ui-flow.mjs        # UI flows (needs playwright)
 ```

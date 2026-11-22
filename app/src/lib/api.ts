@@ -1,7 +1,7 @@
 // Typed IPC wrappers. Outside Tauri (browser dev / UI tests) a mock backend is used.
 import type {
-  AddReport, AppError, ConvertOutcome, InspectResult, MatchResult, OutputConfig,
-  OutputConfigDraft, SaveOutcome, Workspace, WorkspaceFile,
+  AddReport, AppError, ConvertOutcome, InspectResult, MatchResult, OutlineResult, OutputConfig,
+  ExtractionRule, OutputConfigDraft, SaveOutcome, Workspace, WorkspaceFile,
 } from "../types/domain";
 
 type Invoke = <T>(cmd: string, args?: Record<string, unknown>) => Promise<T>;
@@ -46,6 +46,7 @@ export const api = {
   inspectFile: (fileId: string) => invoke<InspectResult>("inspect_file", { fileId }),
   matchPattern: (fileId: string, pattern: string, pages?: string) =>
     invoke<MatchResult>("match_pattern", { fileId, pattern, pages: pages || null }),
+  outline: (fileId: string, rule: ExtractionRule) => invoke<OutlineResult>("outline_file", { fileId, rule }),
   validateConfig: (config: OutputConfigDraft) => invoke<{ valid: true }>("validate_config", { config }),
   convert: (fileId: string, config: OutputConfigDraft) => invoke<ConvertOutcome>("convert", { fileId, config }),
   saveOutput: (jobId: string, config: OutputConfigDraft) => invoke<SaveOutcome>("save_output", { jobId, config }),
@@ -61,7 +62,7 @@ export async function pickWorkspaceDir(): Promise<string | null> {
 }
 
 export async function pickPdfs(): Promise<string[]> {
-  if (!inTauri) return ["/mock/bank-statement-oct.pdf", "/mock/invoices-q3.pdf", "/mock/scanned-receipt.pdf"];
+  if (!inTauri) return ["/mock/bank-statement-oct.pdf", "/mock/invoices-q3.pdf", "/mock/scanned-receipt.pdf", "/mock/annual-report.pdf"];
   const { open } = await import("@tauri-apps/plugin-dialog");
   const r = await open({ multiple: true, title: "Add PDF files", filters: [{ name: "PDF", extensions: ["pdf"] }] });
   return Array.isArray(r) ? r : r ? [r] : [];
