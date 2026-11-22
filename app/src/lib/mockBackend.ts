@@ -133,16 +133,17 @@ export async function mockInvoke<T>(cmd: string, a: Record<string, any> = {}): P
         return clone(state.ws);
       case "get_workspace": return clone(ws());
       case "add_files": {
-        const w = ws(); const added: string[] = []; const skipped: string[] = [];
+        const w = ws(); const added: string[] = []; const skipped: string[] = []; const rejected: AppError[] = [];
         for (const p of a.paths as string[]) {
           const name = p.split("/").pop()!;
+          if (!/\.pdf$/i.test(name)) { rejected.push(err("NOT_A_PDF", `${name}: only .pdf files are accepted`)); continue; }
           if (w.files.some((f) => f.name === name)) { skipped.push(p); continue; }
           const f: WorkspaceFile = { id: uid(), name, pdf_path: `pdfs/${name}`, sha256: name, size_bytes: 120_000 + name.length * 9_000,
             added_at: new Date().toISOString(), status: "new" };
           w.files.push(f); added.push(f.id);
         }
         w.active_file_id ??= added[0] ?? null;
-        return { report: { added, skipped_duplicates: skipped, rejected: [] }, workspace: clone(w) };
+        return { report: { added, skipped_duplicates: skipped, rejected }, workspace: clone(w) };
       }
       case "remove_file": {
         const w = ws(); w.files = w.files.filter((f) => f.id !== a.fileId);

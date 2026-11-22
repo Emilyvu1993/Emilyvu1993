@@ -47,6 +47,7 @@ pub mod codes {
     pub const NO_WORKSPACE: &str = "NO_WORKSPACE";
     pub const FILE_NOT_IN_WORKSPACE: &str = "FILE_NOT_IN_WORKSPACE";
     pub const NOT_A_PDF: &str = "NOT_A_PDF";
+    pub const FILE_TOO_LARGE: &str = "FILE_TOO_LARGE";
     pub const CONFIG_NOT_FOUND: &str = "CONFIG_NOT_FOUND";
     pub const BUSY: &str = "BUSY";
     pub const JOB_NOT_FOUND: &str = "JOB_NOT_FOUND";

@@ -1,5 +1,7 @@
 // What the user should do next, per stable error code.
 const HINTS: Record<string, string> = {
+  FILE_TOO_LARGE: "Files over 2 MB are not accepted. Split the PDF or export a smaller one.",
+  NOT_A_PDF: "Only real .pdf files are accepted.",
   PDF_ENCRYPTED: "This PDF is password protected. Remove the password, then add the file again.",
   PDF_CORRUPT: "The file could not be read. Re-export the PDF from its source application.",
   PDF_NOT_FOUND: "The workspace copy of this PDF is missing. Remove it and add it again.",

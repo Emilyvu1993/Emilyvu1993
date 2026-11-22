@@ -9,6 +9,9 @@ use crate::error::{codes, AppError, AppResult};
 use crate::fs_atomic::write_atomic;
 use crate::model::*;
 
+/// Hard upload limit (2 MiB). Checked via metadata BEFORE reading the file.
+pub const MAX_PDF_BYTES: u64 = 2 * 1024 * 1024;
+
 pub struct WorkspaceStore {
     pub root: PathBuf,
     pub ws: Workspace,
@@ -80,9 +83,27 @@ impl WorkspaceStore {
     }
 
     fn add_one(&mut self, src: &Path) -> AppResult<Option<String>> {
+        let shown = src.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| src.display().to_string());
+        // 1) format by extension (cheap, before touching the file)
+        if !src.extension().is_some_and(|e| e.eq_ignore_ascii_case("pdf")) {
+            return Err(AppError::new(codes::NOT_A_PDF, format!("{shown}: only .pdf files are accepted")));
+        }
+        // 2) size gate from metadata: oversized files are never read into memory
+        let meta = fs::metadata(src)?;
+        if !meta.is_file() {
+            return Err(AppError::new(codes::NOT_A_PDF, format!("{shown}: not a file")));
+        }
+        if meta.len() > MAX_PDF_BYTES {
+            return Err(AppError::new(
+                codes::FILE_TOO_LARGE,
+                format!("{shown}: {:.2} MB exceeds the 2 MB limit", meta.len() as f64 / 1_048_576.0),
+            )
+            .with_detail(serde_json::json!({ "size_bytes": meta.len(), "max_bytes": MAX_PDF_BYTES })));
+        }
         let bytes = fs::read(src)?;
+        // 3) content must really be a PDF (a renamed .pdf is rejected)
         if !bytes.starts_with(b"%PDF-") {
-            return Err(AppError::new(codes::NOT_A_PDF, format!("Not a PDF file: {}", src.display())));
+            return Err(AppError::new(codes::NOT_A_PDF, format!("{shown}: content is not a PDF")));
         }
         let sha = hex::encode(Sha256::digest(&bytes));
         if self.ws.files.iter().any(|f| f.sha256 == sha) {
@@ -172,6 +193,7 @@ mod tests {
         assert_eq!(r.added.len(), 2);
         assert_eq!(r.skipped_duplicates, vec![dup]);
         assert_eq!(r.rejected[0].code, codes::NOT_A_PDF);
+        assert!(r.rejected[0].message.contains("only .pdf"));
         assert_eq!(s.ws.active_file_id.as_deref(), Some(r.added[0].as_str()));
 
         s.set_active(&r.added[1]).unwrap();
@@ -183,6 +205,39 @@ mod tests {
         s.remove_file(&r.added[1]).unwrap();
         assert_eq!(s.ws.active_file_id.as_deref(), Some(r.added[0].as_str()));
         assert!(s.set_active("missing").is_err());
+    }
+
+    #[test]
+    fn rejects_wrong_extension_fake_pdf_and_oversize_but_keeps_valid() {
+        let src = tempfile::tempdir().unwrap();
+        let root = tempfile::tempdir().unwrap();
+        let ok = pdf(src.path(), "ok.pdf", "ok");
+        // exactly at the limit is accepted
+        let at_limit = src.path().join("limit.PDF");
+        let mut body = b"%PDF-1.7\n".to_vec();
+        body.resize(MAX_PDF_BYTES as usize, b'x');
+        fs::write(&at_limit, &body).unwrap();
+        // one byte over is rejected
+        let big = src.path().join("big.pdf");
+        body.push(b'x');
+        fs::write(&big, &body).unwrap();
+        let docx = src.path().join("a.docx");
+        fs::write(&docx, "%PDF-1.7 but wrong extension").unwrap();
+        let fake = src.path().join("fake.pdf");
+        fs::write(&fake, "just text").unwrap();
+        let dir = src.path().join("folder.pdf");
+        fs::create_dir(&dir).unwrap();
+        let s = |p: &Path| p.to_string_lossy().into_owned();
+
+        let mut st = WorkspaceStore::open(root.path()).unwrap();
+        let r = st.add_files(&[ok, s(&at_limit), s(&big), s(&docx), s(&fake), s(&dir)]).unwrap();
+        assert_eq!(r.added.len(), 2, "valid files in the same batch still added");
+        let codes_: Vec<_> = r.rejected.iter().map(|e| e.code.as_str()).collect();
+        assert_eq!(codes_, vec![codes::FILE_TOO_LARGE, codes::NOT_A_PDF, codes::NOT_A_PDF, codes::NOT_A_PDF]);
+        assert!(r.rejected[0].message.contains("exceeds the 2 MB limit"));
+        // rejected files leave nothing behind
+        assert_eq!(fs::read_dir(root.path().join("pdfs")).unwrap().count(), 2);
+        assert_eq!(st.ws.files.len(), 2);
     }
 
     #[test]
