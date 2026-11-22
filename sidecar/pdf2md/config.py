@@ -64,10 +64,24 @@ def validate_glyph_map(gm: Any) -> None:
                 raise ConvertError(INVALID_CONFIG, f"'extraction.glyph_map.{font}' needs single-character keys and text values")
 
 
+def validate_angle_format(ex: dict) -> None:
+    af = ex.get("angle_format")
+    if af is None:
+        return
+    if ex.get("type") != "table":
+        raise ConvertError(INVALID_CONFIG, "'extraction.angle_format' is only supported for table extraction")
+    if not isinstance(af, dict) or not isinstance(af.get("font"), str) or not af["font"].strip():
+        raise ConvertError(INVALID_CONFIG, "'extraction.angle_format.font' must be a non-empty font name part")
+    sc = af.get("skip_columns", [])
+    if not isinstance(sc, list) or not all(isinstance(c, str) for c in sc):
+        raise ConvertError(INVALID_CONFIG, "'extraction.angle_format.skip_columns' must be a list of column names")
+
+
 def validate_extraction(ex: Any) -> None:
     if not isinstance(ex, dict):
         raise ConvertError(INVALID_CONFIG, "'extraction' must be an object")
     validate_glyph_map(ex.get("glyph_map"))
+    validate_angle_format(ex)
     t = ex.get("type")
     if t == "table":
         hr = ex.get("header_row", 0)

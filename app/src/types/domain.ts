@@ -28,6 +28,9 @@ export interface Workspace {
 
 export type TableStrategy = "auto" | "lines" | "text" | "lines_text";
 
+/** Astrodienst notation for angles: font-specific, never applied by a generic glyph map. Tables only. */
+export interface AngleFormat { font: string; skip_columns?: string[] }
+
 /** {"<font name substring>": {"<char>": "<replacement text>"}}: decodes symbol fonts (e.g. zodiac signs stored as letters). */
 export type GlyphMap = Record<string, Record<string, string>>;
 
@@ -43,6 +46,7 @@ export interface TableRule {
   /** max gap (pt) that still joins characters into one word; default 3 */
   text_x_tolerance?: number | null;
   glyph_map?: GlyphMap;
+  angle_format?: AngleFormat | null;
 }
 
 export interface BlockRule {
@@ -81,11 +85,13 @@ export const TABLE_RECORD_TEMPLATE: TemplateSpec = { header: "", record: "{{ mar
 const SIGNS = Object.fromEntries([..."abcdefghijkl"].map((c, i) => [c, "♈♉♊♋♌♍♎♏♐♑♒♓"[i]]));
 
 /** Astrodienst ephemeris font (adienst1): lowercase = zodiac signs, uppercase = planet header glyphs. */
-export const GLYPH_PRESETS: { id: string; label: string; map: GlyphMap }[] = [
+export const GLYPH_PRESETS: { id: string; label: string; map: GlyphMap; angle?: AngleFormat }[] = [
   {
     id: "astro", label: "Astrodienst ephemeris (zodiac signs + planets)",
     map: { adienst: { ...SIGNS, A: "☉", B: "☽", C: "☿", D: "♀", E: "♂", F: "♃", G: "♄", O: "♅", I: "♆", J: "♇",
       L: "☊ true", K: "☊ mean", M: "⚸", N: "⚷" } },
+    // Sid.t is sidereal time (h m s), not an angle: keep it as printed
+    angle: { font: "adienst", skip_columns: ["Sid.t"] },
   },
 ];
 

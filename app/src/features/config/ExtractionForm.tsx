@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { api, toAppError } from "../../lib/api";
 import { fieldsFromColumns, templateFromFields } from "../../lib/configUtils";
 import {
-  DEFAULT_SECTIONS_RULE, GLYPH_PRESETS, SECTIONS_TEMPLATE, TABLE_RECORD_TEMPLATE, type GlyphMap,
+  DEFAULT_SECTIONS_RULE, GLYPH_PRESETS, SECTIONS_TEMPLATE, TABLE_RECORD_TEMPLATE, type AngleFormat, type GlyphMap,
   type AppError, type BlockRule, type InspectResult, type MatchResult, type OutlineResult, type OutputConfigDraft,
   type SectionsRule, type TableRule,
 } from "../../types/domain";
@@ -124,7 +124,9 @@ export function ExtractionForm({ fileId, draft, update, inspect }: {
 
       {ex.type === "sections" && <OutlinePanel fileId={fileId} rule={ex} />}
 
-      <GlyphMapEditor value={ex.glyph_map} onChange={(glyph_map) => setEx({ glyph_map })} />
+      <GlyphMapEditor value={ex.glyph_map} onChange={(glyph_map) => setEx({ glyph_map })}
+        angleSupported={ex.type === "table"} angle={ex.type === "table" ? ex.angle_format : undefined}
+        onAngle={(angle_format) => setEx({ angle_format } as Partial<TableRule>)} />
 
       {ex.type === "table" && insp && insp.tables.length > 0 && (
         <div className="detected">
@@ -299,11 +301,19 @@ function OutlinePanel({ fileId, rule }: { fileId: string; rule: SectionsRule }) 
   );
 }
 
-function GlyphMapEditor({ value, onChange }: { value?: GlyphMap; onChange: (m: GlyphMap | undefined) => void }) {
+function GlyphMapEditor({ value, onChange, angleSupported, angle, onAngle }: {
+  value?: GlyphMap; onChange: (m: GlyphMap | undefined) => void;
+  angleSupported: boolean; angle?: AngleFormat | null; onAngle: (a: AngleFormat | undefined) => void;
+}) {
   const text = value && Object.keys(value).length ? JSON.stringify(value, null, 1) : "";
   const [draft, setDraft] = useState(text);
   const [bad, setBad] = useState<string | null>(null);
+  const [open, setOpen] = useState(!!text);
+  useEffect(() => { if (text) setOpen(true); }, [text]);   // auto-open when a config brings a map; never auto-close
+  const skip = (angle?.skip_columns ?? []).join(", ");
+  const [skipText, setSkipText] = useState(skip);
   useEffect(() => { setDraft(text); setBad(null); }, [text]);
+  useEffect(() => { setSkipText(skip); }, [skip]);
 
   const commit = (t: string) => {
     setDraft(t);
@@ -317,14 +327,16 @@ function GlyphMapEditor({ value, onChange }: { value?: GlyphMap; onChange: (m: G
     } catch (e) { setBad((e as Error).message); }
   };
   const preset = GLYPH_PRESETS.find((p) => JSON.stringify(p.map) === JSON.stringify(value))?.id ?? "";
+  const parseSkip = (t: string) => t.split(",").map((x) => x.trim()).filter(Boolean);
 
   return (
-    <details className="glyph-map" open={!!text}>
+    <details className="glyph-map" open={open} onToggle={(e) => setOpen((e.currentTarget as HTMLDetailsElement).open)}>
       <summary>Symbol fonts (optional): decode glyphs stored as letters</summary>
       <div className="row">
         <select value={preset} aria-label="Glyph preset" onChange={(e) => {
-          const m = GLYPH_PRESETS.find((p) => p.id === e.target.value)?.map;
-          setDraft(m ? JSON.stringify(m, null, 1) : ""); setBad(null); onChange(m);  // show what was applied, clear stale errors
+          const p = GLYPH_PRESETS.find((x) => x.id === e.target.value);
+          setDraft(p ? JSON.stringify(p.map, null, 1) : ""); setBad(null); onChange(p?.map);  // show what was applied, clear stale errors
+          if (angleSupported) onAngle(p?.angle ? { ...p.angle } : undefined);                // the font's own conventions come with its preset
         }}>
           <option value="">{preset || !text ? "None / custom" : "Custom"}</option>
           {GLYPH_PRESETS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
@@ -334,6 +346,28 @@ function GlyphMapEditor({ value, onChange }: { value?: GlyphMap; onChange: (m: G
       <textarea className={`mono ${bad ? "invalid" : ""}`} rows={4} value={draft} spellCheck={false} aria-label="Glyph map JSON"
         placeholder='{"adienst": {"j": "♑"}}' onChange={(e) => commit(e.target.value)} />
       {bad && <div className="warn-text small">Invalid glyph map: {bad}</div>}
+
+      {angleSupported && (
+        <div className="angle-rule">
+          <label className="check">
+            <input type="checkbox" checked={!!angle}
+              onChange={(e) => onAngle(e.target.checked ? { font: Object.keys(value ?? {})[0] ?? "adienst", skip_columns: ["Sid.t"] } : undefined)} />
+            Astrodienst angle convention <span className="muted">(6 45 37 → 6°45′37″ · 27° 6 → 27°6′ · 10♑20'16 → 10♑20′16″)</span>
+          </label>
+          {angle && (
+            <div className="form-grid">
+              <label>Font name contains
+                <input className="mono" value={angle.font} onChange={(e) => onAngle({ ...angle, font: e.target.value })} />
+              </label>
+              <label><span>Skip columns <span className="muted">comma separated</span></span>
+                <input value={skipText} placeholder="Sid.t" onChange={(e) => setSkipText(e.target.value)}
+                  onBlur={() => onAngle({ ...angle, skip_columns: parseSkip(skipText) })} />
+              </label>
+              <p className="muted small span-all">Only applied on pages that really use that font. Sid.t is sidereal time (h m s), not an angle, so it is skipped by default.</p>
+            </div>
+          )}
+        </div>
+      )}
     </details>
   );
 }

@@ -21,6 +21,9 @@ Uploads: `.pdf` only, max 2 MB.
 - Strategies: `auto`, `lines` (ruled), `text` (borderless) and **`lines_text`** (ruled columns, rows taken from text; for tables with no horizontal rules; needs text reaching the last ruled column).
 - **Record = one table**: each table keeps its own header and becomes one record with `title` (caption above it, e.g. `JANUARY 1994`), `page`, `row_count`, `table` (GFM), `markdown` and `rows` (loop in the template).
 - **Symbol fonts** (`glyph_map`): characters of a font (matched by name part) are replaced by real text *before* extraction, so a glyph stays where it sits in the line (`10♑20'16`). A preset for Astrodienst ephemeris fonts is included; maps are plain JSON and editable.
+- **Angle convention (Astrodienst only)**: `angle_format: {font, skip_columns}`, bundled with the Astrodienst preset, never with a generic glyph map.
+  On pages that really use that font: `10♑20'16` → `10♑20′16″`, `27° 6` → `27°6′`, `2°R26` → `2°R26′`, `6 45 37` → `6°45′37″`
+  (digits are kept, only symbols are added). `skip_columns` defaults to `Sid.t`: it is sidereal time (h m s), not an angle. Tables only.
 - **Word gap**: lower it if narrow spaces vanish (`6 41 40` → `64140`).
 Design: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
@@ -41,7 +44,7 @@ npm run dev                # browser-only UI with the mock backend (no Rust/Pyth
 
 ## Tests
 ```bash
-cd sidecar && ../.venv/bin/python -m pytest -q      # engine + RPC + sections + table records (91)
+cd sidecar && ../.venv/bin/python -m pytest -q      # engine + RPC + sections + table records + angles (129)
 cd app/src-tauri && cargo test                      # store, atomic save, sidecar, full flows (16)
 cd app && npm test && npm run typecheck             # UI utils
 cd app && npm run dev & node e2e/ui-flow.mjs        # UI flows (needs playwright)

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import re
 
+from .angles import convert_row, page_uses_font, skip_set
 from .errors import NO_RECORDS_FOUND, TABLE_NOT_FOUND, ConvertError
 from .pdfio import apply_glyph_map, release
 
@@ -86,6 +87,8 @@ def extract(pdf, pages: list[int], rule: dict) -> tuple[list[str], list[dict]]:
     merge = rule.get("merge_multipage", True)
     strategy = rule.get("table_strategy", "auto")
     gm = rule.get("glyph_map")
+    angle = rule.get("angle_format")
+    skip = skip_set(angle) if angle else set()
 
     header: list[str] | None = None
     raw_header: list[str] | None = None
@@ -95,6 +98,7 @@ def extract(pdf, pages: list[int], rule: dict) -> tuple[list[str], list[dict]]:
     for pi in pages:
         page = pdf.pages[pi]
         tables = find_tables(page, strategy, gm, rule.get("text_x_tolerance"))
+        use_angle = bool(angle) and page_uses_font(page, angle["font"])  # before release: needs the page's chars
         release(page)
         chosen = tables if table_index is None else (
             [tables[table_index]] if table_index < len(tables) else []
@@ -121,6 +125,8 @@ def extract(pdf, pages: list[int], rule: dict) -> tuple[list[str], list[dict]]:
                 body = rows[1:] if rows[0] == raw_header else rows
             for r in body:
                 r = (r + [""] * len(header))[: len(header)]
+                if use_angle:
+                    r = convert_row(header, r, skip)
                 records.append(dict(zip(header, r)) | {"_page": pi + 1})
         if header is not None and not merge:
             break
@@ -143,6 +149,8 @@ def extract_per_table(pdf, pages: list[int], rule: dict) -> tuple[list[str], lis
     table_index = rule.get("table_index")
     strategy = rule.get("table_strategy", "auto")
     gm = rule.get("glyph_map")
+    angle = rule.get("angle_format")
+    skip = skip_set(angle) if angle else set()
 
     columns: list[str] = []
     rows_out: list[dict] = []
@@ -150,6 +158,7 @@ def extract_per_table(pdf, pages: list[int], rule: dict) -> tuple[list[str], lis
     for pi in pages:
         page = pdf.pages[pi]
         objs = find_table_objs(page, strategy, gm, rule.get("text_x_tolerance"))
+        use_angle = bool(angle) and page_uses_font(page, angle["font"])
         chosen = objs if table_index is None else ([objs[table_index]] if table_index < len(objs) else [])
         for tbl, bbox in chosen:
             rows = [[clean_cell(c) for c in r] for r in tbl if any(clean_cell(c) for c in r)]
@@ -166,6 +175,8 @@ def extract_per_table(pdf, pages: list[int], rule: dict) -> tuple[list[str], lis
             title = title_above(page, bbox, gm)
             for r in rows[header_row + 1:]:
                 r = (r + [""] * len(header))[: len(header)]
+                if use_angle:
+                    r = convert_row(header, r, skip)
                 rows_out.append(dict(zip(header, r)) | {"_page": pi + 1, "_table": n_tables, "_title": title})
             n_tables += 1
         release(page)

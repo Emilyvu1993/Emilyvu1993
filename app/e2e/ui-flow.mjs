@@ -130,6 +130,11 @@ await page.getByText("row_count", { exact: true }).first().waitFor();
 await page.getByText("Symbol fonts (optional)").click();
 await page.getByLabel("Glyph preset").selectOption({ index: 1 });
 assert.match(await page.getByLabel("Glyph map JSON").inputValue(), /"adienst"[\s\S]*"j": "♑"/);
+assert.equal(await page.getByLabel(/Astrodienst angle convention/).isChecked(), true);       // the preset brings the font's own convention
+assert.equal(await page.getByLabel("Skip columns").inputValue(), "Sid.t");                   // sidereal time stays as printed
+await page.getByLabel("Glyph preset").selectOption("");                                      // "None": no symbol convention at all
+assert.equal(await page.getByLabel(/Astrodienst angle convention/).isChecked(), false);
+await page.getByLabel("Glyph preset").selectOption({ index: 1 });
 await page.getByLabel("Glyph map JSON").fill("{ not json");
 await page.getByText(/Invalid glyph map/).waitFor();                                // bad JSON is flagged, config untouched
 await page.getByLabel("Glyph preset").selectOption({ index: 1 });
