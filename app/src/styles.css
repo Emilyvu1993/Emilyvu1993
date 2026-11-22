@@ -108,6 +108,9 @@ label.check input { width: auto; }
 
 .checks { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 6px 14px; }
 .checks label.check { align-self: auto; padding: 0; }
+.glyph-map { border: 1px dashed var(--border-strong); border-radius: 6px; padding: 8px 10px; }
+.glyph-map summary { cursor: pointer; font-size: 12px; color: var(--accent); }
+.glyph-map textarea, .glyph-map .row { margin-top: 6px; }
 .outline-panel { display: flex; flex-direction: column; gap: 6px; background: var(--panel-2); border-radius: 6px; padding: 10px 12px; }
 .outline { list-style: none; margin: 0; padding: 0; max-height: 220px; overflow: auto; display: flex; flex-direction: column; gap: 3px; font-size: 13px; }
 .outline .lvl { font: 600 10px var(--mono); background: var(--accent-soft); color: var(--accent); border-radius: 3px; padding: 1px 4px; }
@@ -135,7 +138,7 @@ label.check input { width: auto; }
 .tabs button { border: 0; background: none; font: inherit; font-size: 12px; color: var(--muted); padding: 4px 10px; border-radius: 5px; cursor: pointer; }
 .tabs button.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
 .preview-body { flex: 1; overflow: auto; padding: 14px 16px; }
-.md { font-size: 14px; } .md :first-child { margin-top: 0; }
+.md { font-size: 14px; overflow-x: auto; } .md :first-child { margin-top: 0; }
 .md table, .grid { border-collapse: collapse; width: 100%; font-size: 12.5px; }
 .md th, .md td, .grid th, .grid td { border: 1px solid var(--border); padding: 5px 8px; text-align: left; vertical-align: top; }
 .md th, .grid th { background: var(--panel-2); font-weight: 600; }

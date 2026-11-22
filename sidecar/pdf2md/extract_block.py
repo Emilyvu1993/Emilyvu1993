@@ -3,13 +3,14 @@ from __future__ import annotations
 
 from .config import compile_regex
 from .errors import NO_RECORDS_FOUND, ConvertError
-from .pdfio import release
+from .pdfio import apply_glyph_map, release
 
 
-def page_texts(pdf, pages: list[int]) -> list[tuple[int, str]]:
+def page_texts(pdf, pages: list[int], glyph_map: dict | None = None) -> list[tuple[int, str]]:
     out = []
     for pi in pages:
         page = pdf.pages[pi]
+        apply_glyph_map(page, glyph_map)
         out.append((pi + 1, page.extract_text() or ""))
         release(page)
     return out
@@ -37,7 +38,7 @@ def extract(pdf, pages: list[int], rule: dict) -> tuple[list[str], list[dict]]:
 
     # Join pages so blocks may span page breaks; keep offsets -> page map.
     parts, offsets, pos = [], [], 0
-    for pno, txt in page_texts(pdf, pages):
+    for pno, txt in page_texts(pdf, pages, rule.get("glyph_map")):
         offsets.append((pos, pno))
         parts.append(txt)
         pos += len(txt) + 1

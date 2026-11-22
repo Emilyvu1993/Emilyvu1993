@@ -6,7 +6,7 @@ Desktop app (Tauri + React + Python sidecar) that turns **text-based PDFs** into
 ## Extraction types
 | Type | For | A record is |
 |---|---|---|
-| Table rows | statements, ledgers | one table row (ruled or borderless) |
+| Table rows | statements, ledgers | one table row (ruled or borderless), **or one whole table** (e.g. one per month) |
 | Text blocks (regex) | repeated forms, invoices | text from one start-pattern match to the next |
 | **Text sections (headings)** | reports, contracts, legal text | one section: heading + its body |
 
@@ -16,6 +16,12 @@ Text is never translated: original language and diacritics are kept (Unicode nor
 Limits: running headers/footers are recognised from repetition, so a **1-page** document cannot be cleaned;
 PDFs whose fonts lack a Unicode map (e.g. legacy Vietnamese fonts) are rejected with `TEXT_ENCODING_BROKEN` instead of producing garbage.
 Uploads: `.pdf` only, max 2 MB.
+
+### Tables
+- Strategies: `auto`, `lines` (ruled), `text` (borderless) and **`lines_text`** (ruled columns, rows taken from text; for tables with no horizontal rules; needs text reaching the last ruled column).
+- **Record = one table**: each table keeps its own header and becomes one record with `title` (caption above it, e.g. `JANUARY 1994`), `page`, `row_count`, `table` (GFM), `markdown` and `rows` (loop in the template).
+- **Symbol fonts** (`glyph_map`): characters of a font (matched by name part) are replaced by real text *before* extraction, so a glyph stays where it sits in the line (`10♑20'16`). A preset for Astrodienst ephemeris fonts is included; maps are plain JSON and editable.
+- **Word gap**: lower it if narrow spaces vanish (`6 41 40` → `64140`).
 Design: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Behaviour
@@ -35,7 +41,7 @@ npm run dev                # browser-only UI with the mock backend (no Rust/Pyth
 
 ## Tests
 ```bash
-cd sidecar && ../.venv/bin/python -m pytest -q      # engine + RPC + sections (68)
+cd sidecar && ../.venv/bin/python -m pytest -q      # engine + RPC + sections + table records (91)
 cd app/src-tauri && cargo test                      # store, atomic save, sidecar, full flows (16)
 cd app && npm test && npm run typecheck             # UI utils
 cd app && npm run dev & node e2e/ui-flow.mjs        # UI flows (needs playwright)

@@ -40,23 +40,23 @@ await shot("1-preview-success");
 step("success: top-3 preview shown before save");
 
 // stale guard
-await page.getByLabel(/^Record/).fill("- {{ description }}");
+await page.getByLabel(/^Record \(rendered/).fill("- {{ description }}");
 await page.getByText(/config changed after this preview/i).waitFor();
 assert.ok(await page.getByRole("button", { name: /^Save 42 records/ }).isDisabled());
 step("stale preview blocks save");
 
 // failure keeps config
 const broken = "- {{ description }} {{ not_mapped }}";
-await page.getByLabel(/^Record/).fill(broken);
+await page.getByLabel(/^Record \(rendered/).fill(broken);
 await page.getByRole("button", { name: "Convert & preview" }).click();
 await page.getByRole("alert").getByText("TEMPLATE_RENDER").waitFor();
-assert.equal(await page.getByLabel(/^Record/).inputValue(), broken);
+assert.equal(await page.getByLabel(/^Record \(rendered/).inputValue(), broken);
 await page.getByText(/existing output file and this config were not changed/i).waitFor();
 await shot("2-error-kept-config");
 step("failure: error shown, config kept");
 
 // fix, convert, save
-await page.getByLabel(/^Record/).fill("- **{{ date }}** {{ description }}: {{ amount }}");
+await page.getByLabel(/^Record \(rendered/).fill("- **{{ date }}** {{ description }}: {{ amount }}");
 await page.getByRole("button", { name: "Convert & preview" }).click();
 await page.getByRole("button", { name: /^Save 42 records/ }).click();
 await page.getByText(/Saved 42 records/).waitFor();
@@ -73,7 +73,7 @@ await page.getByRole("alert").getByText("NO_TEXT_LAYER").waitFor();
 await shot("3-scanned-error");
 await radios.nth(0).click();
 await page.getByRole("heading", { name: "bank-statement-oct.pdf" }).waitFor(); // switch is async
-assert.match(await page.getByLabel(/^Record/).inputValue(), /\{\{ amount \}\}/);
+assert.match(await page.getByLabel(/^Record \(rendered/).inputValue(), /\{\{ amount \}\}/);
 step("per-file drafts survive switching; scanned PDF -> NO_TEXT_LAYER");
 
 // block extraction + pattern tester
@@ -116,9 +116,29 @@ await page.getByLabel(/Heading size/).fill("3");
 await page.getByText(/No headings found/).waitFor();
 await page.getByRole("button", { name: "Convert & preview" }).click();
 await page.getByRole("alert").getByText("NO_RECORDS_FOUND").waitFor();
-assert.equal(await page.getByLabel(/^Record/).inputValue(), "{{ markdown }}\n");
+assert.equal(await page.getByLabel(/^Record \(rendered/).inputValue(), "{{ markdown }}\n");
 await shot("6-no-headings-error");
 step("no headings: error with hint, template kept");
+
+// table: one record per table (e.g. per month) + symbol-font glyph map preset
+await radios.nth(0).click();
+await page.getByRole("heading", { name: "bank-statement-oct.pdf" }).waitFor();
+await page.getByRole("radio", { name: "Table rows" }).click();
+await page.locator('select:has(option[value="table"])').selectOption("table");
+await page.getByText("title", { exact: true }).first().waitFor();                  // record variables switch to title/row_count/table/...
+await page.getByText("row_count", { exact: true }).first().waitFor();
+await page.getByText("Symbol fonts (optional)").click();
+await page.getByLabel("Glyph preset").selectOption({ index: 1 });
+assert.match(await page.getByLabel("Glyph map JSON").inputValue(), /"adienst"[\s\S]*"j": "♑"/);
+await page.getByLabel("Glyph map JSON").fill("{ not json");
+await page.getByText(/Invalid glyph map/).waitFor();                                // bad JSON is flagged, config untouched
+await page.getByLabel("Glyph preset").selectOption({ index: 1 });
+await page.getByRole("button", { name: "Convert & preview" }).click();
+await page.getByText(/Preview · top 2 of 2 records/).waitFor();
+await page.getByRole("tab", { name: "Markdown" }).click();
+assert.match(await page.locator(".md-src").innerText(), /^## OCTOBER 2026 00:00 UT\n\n\| /);
+await shot("7-record-per-table");
+step("table: one record per table (month) + glyph map preset");
 
 await browser.close();
 console.log(process.exitCode ? "FAILED" : "ALL UI FLOWS PASSED");

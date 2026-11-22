@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { api, toAppError } from "../../lib/api";
 import { fieldsFromColumns, templateFromFields } from "../../lib/configUtils";
 import {
-  DEFAULT_SECTIONS_RULE, SECTIONS_TEMPLATE,
+  DEFAULT_SECTIONS_RULE, GLYPH_PRESETS, SECTIONS_TEMPLATE, TABLE_RECORD_TEMPLATE, type GlyphMap,
   type AppError, type BlockRule, type InspectResult, type MatchResult, type OutlineResult, type OutputConfigDraft,
   type SectionsRule, type TableRule,
 } from "../../types/domain";
@@ -13,7 +13,7 @@ const DEFAULT_BLOCK: BlockRule = {
   type: "block", pages: "", start_pattern: "^Invoice No: (?P<invoice>\\S+)", end_pattern: "",
   field_patterns: { customer: "Customer: (?P<value>.+)", total: "Total: ([\\d,.]+)" },
 };
-const DEFAULT_TABLE: TableRule = { type: "table", pages: "", header_row: 0, merge_multipage: true, table_strategy: "auto", table_index: null };
+const DEFAULT_TABLE: TableRule = { type: "table", pages: "", header_row: 0, merge_multipage: true, table_strategy: "auto", table_index: null, record_mode: "row" };
 
 export function ExtractionForm({ fileId, draft, update, inspect }: {
   fileId: string; draft: OutputConfigDraft; update: Upd; inspect?: InspectResult | AppError;
@@ -31,6 +31,19 @@ export function ExtractionForm({ fileId, draft, update, inspect }: {
       // leaving sections: its fields/template don't exist in table/block data
       const leaving = d.extraction.type === "sections";
       return { ...d, extraction, ...(leaving ? { fields: [], template: d.template.record.trim() === SECTIONS_TEMPLATE.record.trim() ? { ...d.template, record: "" } : d.template } : {}) };
+    });
+  };
+  const setRecordMode = (m: "row" | "table") => {
+    const rec = draft.template.record.trim();
+    const isDefault = rec === TABLE_RECORD_TEMPLATE.record.trim();
+    // a per-row template references row columns that don't exist per table: offer the ready-made one
+    const replace = m === "table" && !!rec && !isDefault &&
+      confirm("One record per table changes the template variables (title, page, row_count, table, markdown, rows). Replace the current template with {{ markdown }}?");
+    update((d) => {
+      const extraction = { ...d.extraction, record_mode: m } as OutputConfigDraft["extraction"];
+      if (m === "table" && (!rec || replace)) return { ...d, extraction, template: { ...TABLE_RECORD_TEMPLATE } };
+      if (m === "row" && isDefault) return { ...d, extraction, template: { ...d.template, record: "" } };
+      return { ...d, extraction };
     });
   };
   const insp = inspect && "page_count" in inspect ? inspect : undefined;
@@ -74,6 +87,7 @@ export function ExtractionForm({ fileId, draft, update, inspect }: {
                 <option value="auto">Auto (ruled lines, then text)</option>
                 <option value="lines">Ruled lines only</option>
                 <option value="text">Text alignment (borderless)</option>
+                <option value="lines_text">Ruled columns + text rows (no row lines)</option>
               </select>
             </label>
             <label>Header row
@@ -89,6 +103,17 @@ export function ExtractionForm({ fileId, draft, update, inspect }: {
               <input type="checkbox" checked={ex.merge_multipage} onChange={(e) => setEx({ merge_multipage: e.target.checked })} />
               Merge across pages (drops repeated headers)
             </label>
+            <label>Record
+              <select value={ex.record_mode ?? "row"} onChange={(e) => setRecordMode(e.target.value as "row" | "table")}>
+                <option value="row">One record per table row</option>
+                <option value="table">One record per table (e.g. per month)</option>
+              </select>
+            </label>
+            <label><span>Word gap (pt) <span className="muted">default 3</span></span>
+              <input type="number" step={0.5} min={0.5} max={10} value={ex.text_x_tolerance ?? ""} placeholder="3"
+                title="Lower it if narrow spaces between numbers get lost (e.g. 6 41 40 → 64140)"
+                onChange={(e) => setEx({ text_x_tolerance: e.target.value === "" ? null : Math.min(10, Math.max(0.5, +e.target.value)) })} />
+            </label>
           </>
         ) : ex.type === "block" ? (
           <BlockFields fileId={fileId} rule={ex} setEx={setEx} />
@@ -98,6 +123,8 @@ export function ExtractionForm({ fileId, draft, update, inspect }: {
       </div>
 
       {ex.type === "sections" && <OutlinePanel fileId={fileId} rule={ex} />}
+
+      <GlyphMapEditor value={ex.glyph_map} onChange={(glyph_map) => setEx({ glyph_map })} />
 
       {ex.type === "table" && insp && insp.tables.length > 0 && (
         <div className="detected">
@@ -246,6 +273,7 @@ function OutlinePanel({ fileId, rule }: { fileId: string; rule: SectionsRule }) 
     <div className="outline-panel" aria-live="polite">
       <div className="eyebrow">Detected headings {loading && <span className="muted">· updating…</span>}</div>
       {err && <div className="warn-text small">{err.code}: {err.message}</div>}
+      {res?.warning && <div className="warn-text small" role="status">{res.warning}</div>}
       {res && res.total === 0 && (
         <div className="warn-text small">
           No headings found. Lower the size ratio, allow bold headings, or switch detection mode.
@@ -268,5 +296,44 @@ function OutlinePanel({ fileId, rule }: { fileId: string; rule: SectionsRule }) 
         </>
       )}
     </div>
+  );
+}
+
+function GlyphMapEditor({ value, onChange }: { value?: GlyphMap; onChange: (m: GlyphMap | undefined) => void }) {
+  const text = value && Object.keys(value).length ? JSON.stringify(value, null, 1) : "";
+  const [draft, setDraft] = useState(text);
+  const [bad, setBad] = useState<string | null>(null);
+  useEffect(() => { setDraft(text); setBad(null); }, [text]);
+
+  const commit = (t: string) => {
+    setDraft(t);
+    if (!t.trim()) { setBad(null); onChange(undefined); return; }
+    try {
+      const v = JSON.parse(t);
+      if (!v || typeof v !== "object" || Array.isArray(v) || Object.values(v).some((m) => !m || typeof m !== "object" || Array.isArray(m)))
+        throw new Error('expected {"font name": {"a": "text"}}');
+      setBad(null);
+      onChange(v as GlyphMap);
+    } catch (e) { setBad((e as Error).message); }
+  };
+  const preset = GLYPH_PRESETS.find((p) => JSON.stringify(p.map) === JSON.stringify(value))?.id ?? "";
+
+  return (
+    <details className="glyph-map" open={!!text}>
+      <summary>Symbol fonts (optional): decode glyphs stored as letters</summary>
+      <div className="row">
+        <select value={preset} aria-label="Glyph preset" onChange={(e) => {
+          const m = GLYPH_PRESETS.find((p) => p.id === e.target.value)?.map;
+          setDraft(m ? JSON.stringify(m, null, 1) : ""); setBad(null); onChange(m);  // show what was applied, clear stale errors
+        }}>
+          <option value="">{preset || !text ? "None / custom" : "Custom"}</option>
+          {GLYPH_PRESETS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+        </select>
+      </div>
+      <p className="muted small">Maps characters of a font (matched by name part) to real text, e.g. <code>j</code> in font <code>adienst</code> → ♑. The glyph keeps its position in the line.</p>
+      <textarea className={`mono ${bad ? "invalid" : ""}`} rows={4} value={draft} spellCheck={false} aria-label="Glyph map JSON"
+        placeholder='{"adienst": {"j": "♑"}}' onChange={(e) => commit(e.target.value)} />
+      {bad && <div className="warn-text small">Invalid glyph map: {bad}</div>}
+    </details>
   );
 }

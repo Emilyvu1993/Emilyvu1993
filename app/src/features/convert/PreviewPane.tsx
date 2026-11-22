@@ -4,6 +4,12 @@ import remarkGfm from "remark-gfm";
 import { conversionKey } from "../../lib/configUtils";
 import { useStore } from "../../store";
 
+function cell(v: unknown): { text: string; full?: string } {
+  if (Array.isArray(v)) return { text: `[${v.length} items]`, full: JSON.stringify(v).slice(0, 2000) };
+  const t = v == null ? "" : String(v);
+  return t.length > 80 ? { text: t.slice(0, 80) + "…", full: t } : { text: t };
+}
+
 export function PreviewPane({ fileId }: { fileId: string }) {
   const preview = useStore((s) => s.previews[fileId]);
   const draft = useStore((s) => s.drafts[fileId]);
@@ -65,7 +71,7 @@ export function PreviewPane({ fileId }: { fileId: string }) {
               <thead><tr><th>#</th>{cols.map((c) => <th key={c}>{c}</th>)}<th>page</th></tr></thead>
               <tbody>
                 {result.preview.map((r, i) => (
-                  <tr key={i}><td>{i + 1}</td>{cols.map((c) => <td key={c}>{String(r[c] ?? "")}</td>)}<td>{String(r._page ?? "")}</td></tr>
+                  <tr key={i}><td>{i + 1}</td>{cols.map((c) => { const x = cell(r[c]); return <td key={c} title={x.full}>{x.text}</td>; })}<td>{String(r._page ?? "")}</td></tr>
                 ))}
               </tbody>
             </table>

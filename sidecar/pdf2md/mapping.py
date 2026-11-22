@@ -59,10 +59,30 @@ def sanitize_key(k: str) -> str:
     return s
 
 
+def unique_keys(columns: list[str]) -> list[str]:
+    """Identifier-safe, collision-free keys. Symbol-only headers (☉, ☽ …) become col_N."""
+    used: set[str] = set()
+    out: list[str] = []
+    for i, c in enumerate(columns):
+        raw = re.sub(r"\W+", "_", c.strip()).strip("_")
+        k = sanitize_key(c) if raw else f"col_{i + 1}"
+        base, n = k, 1
+        while k in used:
+            n += 1
+            k = f"{base}_{n}"
+        used.add(k)
+        out.append(k)
+    return out
+
+
+META_KEYS = ("_page", "_table", "_title")
+
+
 def map_records(columns: list[str], records: list[dict], fields: list[dict]) -> list[dict]:
     if not fields:
         # passthrough: expose every source column under an identifier-safe name
-        return [{sanitize_key(k): v for k, v in r.items()} for r in records]
+        keymap = dict(zip(columns, unique_keys(columns)))
+        return [{(k if k in META_KEYS else keymap.get(k) or sanitize_key(k)): v for k, v in r.items()} for r in records]
 
     available = set(columns) | {"_raw", "_page"}
     missing = [f["source"] for f in fields if f["source"] not in available]
@@ -88,6 +108,8 @@ def map_records(columns: list[str], records: list[dict], fields: list[dict]) -> 
                     f"Record {idx + 1}: cannot apply '{f.get('transform')}' to field '{f['source']}'",
                     {"record_index": idx, "value": v, "error": str(e), "page": r.get("_page")},
                 ) from e
-        m["_page"] = r.get("_page")
+        for mk in META_KEYS:
+            if mk in r:
+                m[mk] = r[mk]
         out.append(m)
     return out

@@ -102,6 +102,25 @@ def ensure_text_layer(pdf: pdfplumber.PDF, pages: list[int]) -> None:
             )
 
 
+def apply_glyph_map(page, glyph_map: dict | None) -> None:
+    """Replace characters of symbol fonts (e.g. astro signs stored as letters) with real text.
+
+    glyph_map = {"<font name substring>": {"j": "♑", ...}}. Mutates the page's cached chars in place,
+    so every later extraction (tables, lines, words) sees the mapped text at the glyph's real position.
+    """
+    if not glyph_map:
+        return
+    rules = [(f.lower(), m) for f, m in glyph_map.items()]
+    for c in page.chars:
+        fn = c.get("fontname", "").lower()
+        for font, m in rules:
+            if font in fn:
+                t = m.get(c.get("text"))
+                if t is not None:
+                    c["text"] = t
+                break
+
+
 def release(page) -> None:
     """Drop cached layout objects; keeps memory flat on large PDFs."""
     try:

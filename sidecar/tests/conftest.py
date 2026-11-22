@@ -134,6 +134,66 @@ def fx(tmp_path_factory):
         _doc(p, [Paragraph("Điều 1. Phạm vi điều chỉnh", h2), Paragraph(vn * 2, pp)], "DJ", "DJ-B")
         paths["legal_vi_1page"] = str(p)
 
+    # ---- ephemeris-like: vertical rules only, caption above, symbol font glyphs inline ----
+    from reportlab.pdfbase.pdfmetrics import stringWidth
+
+    def month_table(c, top, caption, n_rows):
+        xs = [50, 100, 170, 245, 300, 340]
+        c.setFont("Helvetica-Bold", 12)
+        c.drawString(50, top + 8, caption)
+        bottom = top - 20 - n_rows * 12 - 12
+        for x in xs:
+            c.line(x, top + 2, x, bottom)
+        for y in (top + 2, top - 14, bottom):
+            c.line(xs[0], y, xs[-1], y)
+        c.setFont("Helvetica", 8)
+        c.drawString(54, top - 10, "Day")
+        c.drawString(104, top - 10, "Sid.t")
+        c.setFont("Courier", 10)                       # symbol-font header glyphs: A = Sun, B = Moon
+        c.drawString(205, top - 11, "A")
+        c.drawString(270, top - 11, "B")
+        c.setFont("Helvetica", 8)
+        c.drawString(304, top - 10, "Day")
+        y = top - 28
+        for i in range(n_rows):
+            if i and i % 4 == 0:
+                y -= 6                                  # blank gap between day blocks, no horizontal rule
+            c.setFont("Helvetica", 8)
+            c.drawString(54, y, f"S {i + 1}")
+            x = 104                                     # "6 41 40": groups separated by a narrow gap, no space char
+            for part in ("6", f"{41 + i}", "40"):
+                c.drawString(x, y, part)
+                x += stringWidth(part, "Helvetica", 8) + 2.2
+            x = 174
+            if i % 3 == 0:                              # sign changes: degree + glyph + minutes, glyph is taller
+                c.drawString(x, y, "10")
+                x += stringWidth("10", "Helvetica", 8)
+                c.setFont("Courier", 10)
+                c.drawString(x, y - 1.5, "j")
+                x += stringWidth("j", "Courier", 10)
+                c.setFont("Helvetica", 8)
+                c.drawString(x, y, "20'16")
+            else:
+                c.drawString(x, y, f"1{i}\u00b021'24")
+            c.drawString(249, y, f"2{i}\u00b0 5")
+            c.drawString(304, y, f"S {i + 1}")
+            y -= 12
+        return bottom
+
+    p = d / "ephemeris_like.pdf"
+    c = canvas.Canvas(str(p), pagesize=A4)
+    b = month_table(c, 780, "JANUARY 1994", 7)
+    month_table(c, b - 40, "FEBRUARY 1994", 5)
+    c.showPage()
+    c.save()
+    paths["ephemeris_like"] = str(p)
+
+    # many short bold lines: not prose, must trigger the "looks like a table" warning
+    h1, _, pp = _styles(h1=12, body=8)
+    p = d / "many_heads.pdf"
+    _doc(p, [x for i in range(30) for x in (Paragraph(f"Heading {i}", h1), Paragraph("plain body text " * 4, pp))])
+    paths["many_heads"] = str(p)
+
     p = d / "corrupt.pdf"
     p.write_bytes(b"%PDF-1.7\nthis is not really a pdf\n%%EOF")
     paths["corrupt"] = str(p)
@@ -178,6 +238,20 @@ def block_cfg():
 def sec_cfg():
     return {
         "extraction": {"type": "sections", "heading_mode": "font"},
+        "fields": [],
+        "template": {"record": "{{ markdown }}\n"},
+        "output": {"mode": "single_file"},
+    }
+
+
+GLYPHS = {"Courier": {"A": "\u2609", "B": "\u263d", "j": "\u2651"}}
+
+
+@pytest.fixture
+def eph_cfg():
+    return {
+        "extraction": {"type": "table", "table_strategy": "lines_text", "record_mode": "table", "header_row": 0,
+                       "glyph_map": GLYPHS},
         "fields": [],
         "template": {"record": "{{ markdown }}\n"},
         "output": {"mode": "single_file"},

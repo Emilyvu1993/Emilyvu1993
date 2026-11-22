@@ -9,7 +9,7 @@ from typing import Any
 from . import extract_block, extract_sections, extract_table
 from .config import compile_regex, validate, validate_extraction
 from .errors import OUTPUT_WRITE_FAILED, ConvertError
-from .mapping import map_records
+from .mapping import map_records, unique_keys
 from .pdfio import ensure_text_layer, open_pdf, page_has_text, parse_pages, release
 from .render import compile_templates, render_frame, render_record
 
@@ -24,6 +24,36 @@ def safe_filename(name: str, fallback: str) -> str:
     if not s:
         return fallback
     return f"_{s}" if s.upper() in _RESERVED else s
+
+
+def _md_cell(v: Any) -> str:
+    return ("" if v is None else str(v)).replace("|", "\\|").replace("\n", " ")
+
+
+def md_table(labels: list[str], rows: list[dict], keys: list[str]) -> str:
+    head = "| " + " | ".join(_md_cell(l) for l in labels) + " |"
+    sep = "|" + "|".join(" --- " for _ in keys) + "|"
+    body = ["| " + " | ".join(_md_cell(r.get(k)) for k in keys) + " |" for r in rows]
+    return "\n".join([head, sep, *body])
+
+
+def group_by_table(records: list[dict], columns: list[str], fields: list[dict]) -> list[dict]:
+    """One record per detected table: title (caption above), page, row_count, rows, table (GFM), markdown."""
+    label_of = {f["target"]: f["target"] for f in fields} if fields else dict(zip(unique_keys(columns), columns))
+    groups: dict[int, list[dict]] = {}
+    for r in records:
+        groups.setdefault(r["_table"], []).append(r)
+    out = []
+    for rs in groups.values():
+        keys = [k for k in rs[0] if not k.startswith("_")]
+        rows = [{k: r.get(k) for k in keys} for r in rs]
+        title = rs[0].get("_title") or ""
+        table = md_table([label_of.get(k, k) for k in keys], rows, keys)
+        out.append({
+            "title": title, "page": rs[0].get("_page"), "row_count": len(rows), "table": table,
+            "markdown": f"## {title}\n\n{table}" if title else table, "rows": rows, "_page": rs[0].get("_page"),
+        })
+    return out
 
 
 def _json_safe(v: Any) -> Any:
@@ -145,6 +175,9 @@ def convert(pdf_path: str, config: dict, out_tmp_path: str, preview_n: int = 3) 
         columns, raw = mod.extract(pdf, pages, rule)
 
     records = map_records(columns, raw, config.get("fields") or [])
+    if rule["type"] == "table" and rule.get("record_mode", "row") == "table":
+        records = group_by_table(records, columns, config.get("fields") or [])
+        columns = ["title", "page", "row_count", "table", "markdown", "rows"]
     meta = {"source_file": os.path.basename(pdf_path)}
 
     # Render everything up-front so a failure on record N never leaves a partial file.

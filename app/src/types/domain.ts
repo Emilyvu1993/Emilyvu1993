@@ -26,7 +26,10 @@ export interface Workspace {
   active_file_id?: string | null;
 }
 
-export type TableStrategy = "auto" | "lines" | "text";
+export type TableStrategy = "auto" | "lines" | "text" | "lines_text";
+
+/** {"<font name substring>": {"<char>": "<replacement text>"}}: decodes symbol fonts (e.g. zodiac signs stored as letters). */
+export type GlyphMap = Record<string, Record<string, string>>;
 
 export interface TableRule {
   type: "table";
@@ -35,6 +38,11 @@ export interface TableRule {
   header_row: number;
   merge_multipage: boolean;
   table_strategy: TableStrategy;
+  /** "row" = one record per table row; "table" = one record per table (e.g. per month). */
+  record_mode?: "row" | "table";
+  /** max gap (pt) that still joins characters into one word; default 3 */
+  text_x_tolerance?: number | null;
+  glyph_map?: GlyphMap;
 }
 
 export interface BlockRule {
@@ -43,6 +51,7 @@ export interface BlockRule {
   start_pattern: string;
   end_pattern?: string;
   field_patterns: Record<string, string>;
+  glyph_map?: GlyphMap;
 }
 
 export type HeadingMode = "font" | "numbering" | "regex";
@@ -60,9 +69,25 @@ export interface SectionsRule {
   join_lines: boolean;
   skip_header_footer: boolean;
   normalize_unicode: boolean;
+  glyph_map?: GlyphMap;
 }
 
 export type ExtractionRule = TableRule | BlockRule | SectionsRule;
+
+/** Variables of a record when record_mode = "table". Per-row values are in `rows` (loop) and `table`. */
+export const TABLE_RECORD_FIELDS = ["title", "page", "row_count", "table", "markdown", "rows"];
+export const TABLE_RECORD_TEMPLATE: TemplateSpec = { header: "", record: "{{ markdown }}\n", footer: "", separator: "\n" };
+
+const SIGNS = Object.fromEntries([..."abcdefghijkl"].map((c, i) => [c, "♈♉♊♋♌♍♎♏♐♑♒♓"[i]]));
+
+/** Astrodienst ephemeris font (adienst1): lowercase = zodiac signs, uppercase = planet header glyphs. */
+export const GLYPH_PRESETS: { id: string; label: string; map: GlyphMap }[] = [
+  {
+    id: "astro", label: "Astrodienst ephemeris (zodiac signs + planets)",
+    map: { adienst: { ...SIGNS, A: "☉", B: "☽", C: "☿", D: "♀", E: "♂", F: "♃", G: "♄", O: "♅", I: "♆", J: "♇",
+      L: "☊ true", K: "☊ mean", M: "⚸", N: "⚷" } },
+  },
+];
 
 export const SECTION_FIELDS = ["title", "level", "heading", "body", "markdown", "page", "page_end", "word_count"];
 
@@ -80,6 +105,7 @@ export interface OutlineResult {
   total: number;
   headings: OutlineHeading[];
   font_sizes: { size: number; chars: number; bold_chars: number }[];
+  warning?: string | null;
 }
 
 export type Transform = "" | "trim" | "upper" | "lower" | "number" | "number:eu" | `date:${string}`;

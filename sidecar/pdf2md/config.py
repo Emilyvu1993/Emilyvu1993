@@ -49,16 +49,37 @@ def validate_sections(ex: dict) -> None:
         compile_regex(hp, "extraction.heading_pattern")
 
 
+def validate_glyph_map(gm: Any) -> None:
+    if gm is None:
+        return
+    if not isinstance(gm, dict):
+        raise ConvertError(INVALID_CONFIG, "'extraction.glyph_map' must be an object {font: {char: text}}")
+    for font, m in gm.items():
+        if not isinstance(font, str) or not font.strip():
+            raise ConvertError(INVALID_CONFIG, "'extraction.glyph_map' keys must be non-empty font names")
+        if not isinstance(m, dict):
+            raise ConvertError(INVALID_CONFIG, f"'extraction.glyph_map.{font}' must be an object {{char: text}}")
+        for ch, rep in m.items():
+            if not isinstance(ch, str) or len(ch) != 1 or not isinstance(rep, str):
+                raise ConvertError(INVALID_CONFIG, f"'extraction.glyph_map.{font}' needs single-character keys and text values")
+
+
 def validate_extraction(ex: Any) -> None:
     if not isinstance(ex, dict):
         raise ConvertError(INVALID_CONFIG, "'extraction' must be an object")
+    validate_glyph_map(ex.get("glyph_map"))
     t = ex.get("type")
     if t == "table":
         hr = ex.get("header_row", 0)
         if not isinstance(hr, int) or hr < 0:
             raise ConvertError(INVALID_CONFIG, "'extraction.header_row' must be an integer >= 0")
-        if ex.get("table_strategy", "auto") not in ("auto", "lines", "text"):
-            raise ConvertError(INVALID_CONFIG, "'extraction.table_strategy' must be auto, lines or text")
+        if ex.get("table_strategy", "auto") not in ("auto", "lines", "text", "lines_text"):
+            raise ConvertError(INVALID_CONFIG, "'extraction.table_strategy' must be auto, lines, text or lines_text")
+        xt = ex.get("text_x_tolerance")
+        if xt is not None and (not _is_num(xt) or not 0.1 <= xt <= 10):
+            raise ConvertError(INVALID_CONFIG, "'extraction.text_x_tolerance' must be a number between 0.1 and 10")
+        if ex.get("record_mode", "row") not in ("row", "table"):
+            raise ConvertError(INVALID_CONFIG, "'extraction.record_mode' must be 'row' or 'table'")
         ti = ex.get("table_index")
         if ti is not None and (not isinstance(ti, int) or ti < 0):
             raise ConvertError(INVALID_CONFIG, "'extraction.table_index' must be an integer >= 0")

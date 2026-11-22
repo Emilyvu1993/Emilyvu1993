@@ -136,20 +136,32 @@ function convert(fileId: string, cfg: OutputConfigDraft): ConvertOutcome {
     }
     return o;
   });
-  const meta = { source_file: f.name, count: String(recs.length) };
+  // record_mode "table": one record per table (the mock splits the statement into two "months")
+  const grouped = kind === "table" && type === "table" && (cfg.extraction as { record_mode?: string }).record_mode === "table";
+  const esc = (v: string) => v.replace(/\|/g, "\\|");
+  const keys = fields.map((m) => m.target);
+  const out: Record<string, string>[] = grouped
+    ? [recs.slice(0, 21), recs.slice(21)].map((g, n) => {
+        const title = n === 0 ? "OCTOBER 2026 00:00 UT" : "NOVEMBER 2026 00:00 UT";
+        const table = [`| ${keys.map(esc).join(" | ")} |`, `|${keys.map(() => " --- ").join("|")}|`,
+          ...g.map((r) => `| ${keys.map((k) => esc(r[k] ?? "")).join(" | ")} |`)].join("\n");
+        return { title, page: String(n + 1), row_count: String(g.length), table, markdown: `## ${title}\n\n${table}`, rows: JSON.stringify(g) };
+      })
+    : recs;
+  const meta = { source_file: f.name, count: String(out.length) };
   const header = cfg.template.header ? render(cfg.template.header, meta, "header") : "";
-  const bodies = recs.map((r, i) => render(cfg.template.record, { ...r, index: String(i + 1) }, "record", i));
+  const bodies = out.map((r, i) => render(cfg.template.record, { ...r, index: String(i + 1) }, "record", i));
   const footer = cfg.template.footer ? render(cfg.template.footer, meta, "footer") : "";
   const sep = cfg.template.separator ?? "\n";
   const nl = (s: string) => (s && !s.endsWith("\n") ? s + "\n" : s);
   const job_id = uid();
   state.jobs.set(job_id, { fileId, key: conversionKey(cfg), md: nl(header) + bodies.join(sep) + (footer ? "\n" + footer : "") });
-  const empty = fields.map((m) => ({ code: "EMPTY_VALUES", field: m.target, count: recs.filter((r) => !r[m.target]).length }))
+  const empty = grouped ? [] : fields.map((m) => ({ code: "EMPTY_VALUES", field: m.target, count: out.filter((r) => !r[m.target]).length }))
     .filter((w) => w.count);
   return {
     job_id, config_hash: conversionKey(cfg),
     result: {
-      ok: true, record_count: recs.length, columns: cols, preview: recs.slice(0, 3).map((r) => ({ ...r, _page: 1 })),
+      ok: true, record_count: out.length, columns: cols, preview: out.slice(0, 3).map((r) => ({ ...r, _page: 1 })),
       preview_md: nl(header) + bodies.slice(0, 3).join(sep), full_md_tmp_path: `.tmp/${job_id}.md`,
       outputs: [`.tmp/${job_id}.md`], warnings: empty,
     },

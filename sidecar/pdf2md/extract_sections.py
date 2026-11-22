@@ -15,12 +15,13 @@ from dataclasses import dataclass
 
 from .config import compile_regex
 from .errors import NO_RECORDS_FOUND, ConvertError
-from .pdfio import release
+from .pdfio import apply_glyph_map, release
 
 COLUMNS = ["title", "level", "heading", "body", "markdown", "page", "page_end", "word_count"]
 MAX_LEVEL = 6
 
 BOLD_RE = re.compile(r"(?i)bold|black|heavy|semibold|demi|[-,.]bd\b|\bbd\b")
+WORD_RE = re.compile(r"[^\W\d_]{2,}")  # a heading contains at least one real word (not lone symbols/letters)
 PAGE_NUM_RE = re.compile(r"(?i)^\W*(?:trang|page|p\.)?\s*\d+(?:\s*(?:/|of|trên)\s*\d+)?\W*$")
 # bullet glyphs often have no Unicode mapping -> pdfminer emits "(cid:N)"
 BULLET_RE = re.compile(r"^\s*(?:[•●▪◦·‣]|\(cid:\d+\))\s*")
@@ -49,10 +50,11 @@ class Line:
     kind: tuple | None = None  # set when the line is a heading
 
 
-def load_lines(pdf, pages: list[int], normalize: bool = True) -> list[Line]:
+def load_lines(pdf, pages: list[int], normalize: bool = True, glyph_map: dict | None = None) -> list[Line]:
     out: list[Line] = []
     for pi in pages:
         page = pdf.pages[pi]
+        apply_glyph_map(page, glyph_map)
         for ln in page.extract_text_lines(strip=True, return_chars=True):
             text = re.sub(r"\s+", " ", ln["text"]).strip()
             chars = [c for c in ln["chars"] if c.get("text", "").strip()]
@@ -127,7 +129,7 @@ def detect_headings(lines: list[Line], rule: dict, body_size: float, body_bold: 
         ratio = float(rule.get("size_ratio", 1.15))
         use_bold = rule.get("bold_headings", True) and body_bold < 0.5
         for l in lines:
-            if len(l.text) > max_chars:
+            if len(l.text) > max_chars or not WORD_RE.search(l.text):
                 continue
             big = l.size >= body_size * ratio
             bold_head = use_bold and l.bold and l.size >= body_size * 0.95 and not l.text.endswith(NOT_HEADING_END)
@@ -256,7 +258,7 @@ def analyze(pdf, pages: list[int], rule: dict):
     norm = rule.get("normalize_unicode", True)
     ref = list(range(min(len(pdf.pages), REF_PAGES)))
     wanted = set(pages)
-    lines = load_lines(pdf, sorted(wanted | set(ref)) if rule.get("skip_header_footer", True) else pages, norm)
+    lines = load_lines(pdf, sorted(wanted | set(ref)) if rule.get("skip_header_footer", True) else pages, norm, rule.get("glyph_map"))
     if rule.get("skip_header_footer", True):
         repeated = running_keys([l for l in lines if l.page - 1 in ref], len(ref))
         lines = drop_running_lines([l for l in lines if l.page - 1 in wanted], repeated)
@@ -295,4 +297,9 @@ def outline(pdf, pages: list[int], rule: dict, limit: int = 60) -> dict:
     lines, body_size = analyze(pdf, pages, rule)
     levels = level_map(lines)
     heads = [{"title": l.text, "level": levels[l.kind], "page": l.page, "size": l.size} for l in lines if l.kind]
-    return {"body_size": body_size, "total": len(heads), "headings": heads[:limit], "font_sizes": size_histogram(lines)}
+    warning = None
+    if len(heads) > 25 and len(heads) > 0.2 * len(lines):
+        warning = (f"{len(heads)} of {len(lines)} lines look like headings. This looks like a table or form, "
+                   "not prose: use the Table rows type, or raise the heading size ratio.")
+    return {"body_size": body_size, "total": len(heads), "headings": heads[:limit],
+            "font_sizes": size_histogram(lines), "warning": warning}

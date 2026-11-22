@@ -1,4 +1,4 @@
-import { SECTION_FIELDS, type FieldMapping, type OutputConfigDraft, type TemplateSpec } from "../types/domain";
+import { SECTION_FIELDS, TABLE_RECORD_FIELDS, type FieldMapping, type OutputConfigDraft, type TemplateSpec } from "../types/domain";
 
 /** Stable stringify (sorted keys) — mirrors the Rust conversion hash inputs. */
 export function stableStringify(v: unknown): string {
@@ -73,6 +73,7 @@ export function availableSources(c: OutputConfigDraft, detectedColumns: string[]
 }
 
 export function templateVariables(c: OutputConfigDraft): string[] {
+  if (c.extraction.type === "table" && c.extraction.record_mode === "table") return TABLE_RECORD_FIELDS;
   if (c.fields.length) return c.fields.map((f) => f.target);
   return c.extraction.type === "sections" ? SECTION_FIELDS : [];
 }
