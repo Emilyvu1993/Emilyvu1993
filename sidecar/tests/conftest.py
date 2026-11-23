@@ -48,6 +48,113 @@ def _styles(font="Helvetica", bold="Helvetica-Bold", h1=18, h2=13, body=10, bold
     )
 
 
+def _spec_pdf(path):
+    """Mimics a Markdown-rendered API spec: page frame, rounded code cards, ruled tables whose field names are monospace
+    on grey backgrounds (rect pills for wrapped names -> phantom edge between the two lines; curve pill for the others),
+    a table and a JSON block that continue on the next page."""
+    H = 842
+    c = canvas.Canvas(str(path), pagesize=A4)
+    Y = lambda top: H - top
+
+    def txt(x, top, s, font="Helvetica", size=10.5):
+        c.setFillColorRGB(0, 0, 0)
+        c.setFont(font, size)
+        c.drawString(x, Y(top + size), s)
+
+    def frame():
+        c.setLineWidth(0.5)
+        c.setStrokeColorRGB(0.8, 0.8, 0.8)
+        c.rect(28, Y(814), 539, 786, stroke=1, fill=0)
+
+    def code_card(top, bottom, lines, step=15):
+        c.setStrokeColorRGB(0.6, 0.6, 0.6)
+        c.roundRect(28, Y(bottom), 539, bottom - top, 6, stroke=1, fill=0)
+        for i, ln in enumerate(lines):
+            txt(40, top + 10 + i * step, ln, "Courier", 10.5)
+
+    def table(top, rows):
+        """rows = [(cells, height)], cells[0] may contain '|' = a wrapped monospace name; first row is the header."""
+        col = [28, 140, 258, 567]       # narrow first column: a 14-char monospace token fills it, so the renderer wraps it
+        total = sum(h for _, h in rows)
+        c.setLineWidth(0.5)
+        c.setStrokeColorRGB(0.6, 0.6, 0.6)
+        c.rect(28, Y(top + total), 539, total, stroke=1, fill=0)
+        y = top
+        for ri, (cells, h) in enumerate(rows):
+            if ri:
+                c.line(28, Y(y), 567, Y(y))
+            for ci, cell in enumerate(cells):
+                if ri == 0:
+                    txt(col[ci] + 8, y + 5, cell, "Helvetica-Bold")
+                elif ci == 0:
+                    parts = cell.split("|")
+                    for k, part in enumerate(parts):
+                        c.setFillColorRGB(0.93, 0.93, 0.93)
+                        if len(parts) > 1:                                   # wrapped name: a box pill per line
+                            c.rect(30, Y(y + 3 + 15 * (k + 1)), 106, 15, stroke=0, fill=1)
+                        else:                                                # single line: a rounded (curve) pill
+                            c.roundRect(34, Y(y + 18), 80, 15, 4, stroke=0, fill=1)
+                        txt(40, y + 5 + 15 * k, part, "Courier")
+                else:
+                    txt(col[ci] + 8, y + 5, cell)
+            y += h
+        for x in col[1:-1]:
+            c.line(x, Y(top), x, Y(top + total))
+
+    body = "Intro paragraph about the request. It is long enough to be the most common text size of the document. "
+    # page 1
+    frame()
+    txt(40, 45, "Spec Doc", "Helvetica-Bold", 22.5)
+    txt(40, 95, "1 Endpoints", "Helvetica-Bold", 16.5)
+    code_card(130, 190, ["POST http://host/predict", "Content-Type: application/json"])
+    txt(40, 210, body)
+    txt(40, 226, body)
+    txt(40, 260, "2 Request", "Helvetica-Bold", 16.5)
+    txt(40, 295, "Fields", "Helvetica-Bold", 13.5)
+    rows1 = [(["Field", "Type", "Purpose"], 22), (["cifcode", "String", "Customer id (CIF)"], 22),
+             (["priceaffteratt|r", "Number", "Appraised value, VND"], 38),
+             (["registrationda|te", "Number", "Registration date, epoch ms"], 38)]
+    table(790 - sum(h for _, h in rows1), rows1)
+    c.showPage()
+    # page 2: the table continues (header repeated), then the first half of a JSON block that runs to the page bottom
+    frame()
+    rows2 = [(["Field", "Type", "Purpose"], 22), (["accomodationpr|ovinceCode", "String", "Province code, 2 chars"], 38),
+             (["extraData", "JSON Object", "Free tracking data"], 22)]
+    table(28, rows2)
+    txt(40, 150, "JSON example", "Helvetica-Bold", 13.5)
+    code_card(185, 790, ["{", '  "cifcode": "2510808575",', '  "assettype": "17",', '  "extraData": {'])
+    c.showPage()
+    # page 3: the JSON continues at the top, then another section
+    frame()
+    code_card(28, 100, ['    "loan_id": 1', "  }", "}"])
+    txt(40, 150, "3 Output", "Helvetica-Bold", 16.5)
+    txt(40, 190, body)
+    txt(40, 206, body)
+    c.showPage()
+    c.save()
+    return path
+
+
+def _mono_pdf(path):
+    """No cards at all: a paragraph and consecutive monospace lines (code without a box)."""
+    H = 842
+    c = canvas.Canvas(str(path), pagesize=A4)
+    Y = lambda top: H - top
+    c.setFont("Helvetica-Bold", 16.5)
+    c.drawString(40, Y(60), "Usage")
+    c.setFont("Helvetica", 10.5)
+    for i in range(3):
+        c.drawString(40, Y(100 + 15 * i), "Run the converter from a terminal with the options below, then read the output file. " * 1)
+    c.setFont("Courier", 10.5)
+    for i, ln in enumerate(["pdf2md input.pdf", "  --pages 1-3", "  --out result.md"]):
+        c.drawString(40, Y(180 + 15 * i), ln)
+    c.setFont("Helvetica", 10.5)
+    c.drawString(40, Y(260), "That is all.")
+    c.showPage()
+    c.save()
+    return path
+
+
 @pytest.fixture(scope="session")
 def fx(tmp_path_factory):
     d = tmp_path_factory.mktemp("fx")
@@ -222,6 +329,14 @@ def fx(tmp_path_factory):
              PageBreak(), Paragraph("Suit of Wands", grp),
              card_table([minor("Ace of Wands"), minor("Two of Wands"), minor("Three of Wands")])])
     paths["tarot_like"] = str(p)
+
+    # ---- spec-like: bordered cards for code and tables, inline-code "pills", split table + split JSON ----
+    paths["spec_like"] = str(_spec_pdf(d / "spec_like.pdf"))
+    paths["mono_lines"] = str(_mono_pdf(d / "mono_lines.pdf"))
+    h1, _, pp = _styles()
+    p = d / "table_heading.pdf"
+    _doc(p, [Paragraph("Report", h1), Paragraph(LOREM * 2, pp), _table([HEADER] + _rows(3))])
+    paths["table_heading"] = str(p)
 
     p = d / "corrupt.pdf"
     p.write_bytes(b"%PDF-1.7\nthis is not really a pdf\n%%EOF")

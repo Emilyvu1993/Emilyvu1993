@@ -96,6 +96,7 @@ await page.getByText(/No tables detected/).waitFor();
 await page.getByRole("button", { name: "Use Text sections" }).click();
 await page.getByText(/8 headings → 8 records/).waitFor();          // includes the stand-alone "Is it upside down?" label
 assert.equal(await page.getByLabel(/Keep bold\/italic/).isChecked(), true);       // emphasis is kept by default
+assert.equal(await page.getByLabel(/Keep tables and code blocks/).isChecked(), false);   // opt-in: layout tables stay plain text
 await page.getByLabel(/Never a heading/).fill("^Is it upside down");
 await page.getByText(/7 headings → 7 records/).waitFor();          // exclusion removes it from the outline at once
 await page.getByLabel(/Short bold lines/).uncheck();

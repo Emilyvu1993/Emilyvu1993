@@ -111,7 +111,7 @@ def test_styled_runs_and_md():
     chars = [_c("H", "Calibri-Bold", 0), _c("i", "Calibri-Bold", 5), _c(":", "Calibri-Bold", 10), _c(" ", "Calibri", 15),
              _c("o", "Calibri", 20), _c("k", "Calibri-Italic", 25)]
     runs = xs._styled_runs(chars, "Hi: ok", True)
-    assert runs == [("Hi: ", True, False), ("o", False, False), ("k", False, True)]
+    assert runs == [("Hi: ", True, False, False), ("o", False, False, False), ("k", False, True, False)]   # (text, bold, italic, mono)
     assert xs.Line("Hi: ok", 1, 0, 1, 10, False, 800, runs=runs).md() == "**Hi:** o*k*"
     assert xs.Line("x", 1, 0, 1, 10, False, 800).md() == "x"                         # no runs: plain
     assert xs._styled_runs(chars, "something else", True) == []                      # never alter the wording

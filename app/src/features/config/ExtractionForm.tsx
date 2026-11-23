@@ -253,6 +253,7 @@ function SectionsFields({ rule, setEx }: { rule: SectionsRule; setEx: (p: Partia
         <label className="check"><input type="checkbox" checked={rule.include_preamble} onChange={(e) => setEx({ include_preamble: e.target.checked })} />Keep text before the first heading</label>
         <label className="check"><input type="checkbox" checked={rule.join_lines} onChange={(e) => setEx({ join_lines: e.target.checked })} />Join wrapped lines into paragraphs</label>
         <label className="check"><input type="checkbox" checked={rule.skip_header_footer} onChange={(e) => setEx({ skip_header_footer: e.target.checked })} />Drop running headers/footers &amp; page numbers</label>
+        <label className="check"><input type="checkbox" checked={rule.keep_blocks} onChange={(e) => setEx({ keep_blocks: e.target.checked })} />Keep tables and code blocks (GFM tables, fenced code) <span className="muted">· for documents rendered from Markdown/HTML</span></label>
         <label className="check"><input type="checkbox" checked={rule.emphasis} onChange={(e) => setEx({ emphasis: e.target.checked })} />Keep bold/italic as Markdown (**bold**, *italic*)</label>
         <label className="check"><input type="checkbox" checked={rule.normalize_unicode} onChange={(e) => setEx({ normalize_unicode: e.target.checked })} />Normalise Unicode (NFC): same text, stable diacritics</label>
       </div>

@@ -15,6 +15,11 @@ Fields: `title, level, parent, heading, body, markdown, page, page_end, word_cou
 Options for real-world layouts: **Never a heading (regex)** drops lines such as a label repeated in every card
 (`^(Is|Are) (it|he|she|they)\b.*upside down\?$`); a line that opens with a **bold label** (`Home:`, `Is he upside down?`) starts
 its own paragraph; **bold/italic are kept** as `**bold**` / `*italic*` (switch off in the rule; wording is never changed).
+**Keep tables and code blocks** (opt-in, for PDFs rendered from Markdown/HTML such as API specs): bordered tables become Markdown
+tables (a table split by a page break is merged back, columns that are empty everywhere are dropped), boxed or monospace text becomes a
+fenced code block (```json when it parses as JSON, indentation kept), and monospace words in text or cells become `code`. A monospace
+identifier that the renderer wrapped in the middle of a word is joined back (`priceaffteratt` + `r` → `priceaffterattr`). Leave it off when
+a table is only a page layout (e.g. image + text columns): those stay plain text. Borderless tables are not handled by this option.
 Text is never translated: original language and diacritics are kept (Unicode normalised to NFC, switchable).
 Limits: running headers/footers are recognised from repetition, so a **1-page** document cannot be cleaned;
 PDFs whose fonts lack a Unicode map (e.g. legacy Vietnamese fonts) are rejected with `TEXT_ENCODING_BROKEN` instead of producing garbage.
@@ -47,7 +52,7 @@ npm run dev                # browser-only UI with the mock backend (no Rust/Pyth
 
 ## Tests
 ```bash
-cd sidecar && ../.venv/bin/python -m pytest -q      # engine + RPC + sections + table records + angles + tarot-style sections (142)
+cd sidecar && ../.venv/bin/python -m pytest -q      # engine + RPC + sections + table records + angles + tarot-style sections (153)
 cd app/src-tauri && cargo test                      # store, atomic save, sidecar, full flows (16)
 cd app && npm test && npm run typecheck             # UI utils
 cd app && npm run dev & node e2e/ui-flow.mjs        # UI flows (needs playwright)

@@ -75,6 +75,8 @@ export interface SectionsRule {
   normalize_unicode: boolean;
   /** keep bold/italic as **bold** / *italic* in the body (labels like "Home:" stay recognisable) */
   emphasis: boolean;
+  /** keep tables as GFM tables and code as fenced blocks (documents rendered from Markdown/HTML) */
+  keep_blocks: boolean;
   /** lines matching this regex are never headings (e.g. a stand-alone label repeated in every card) */
   heading_exclude?: string;
   glyph_map?: GlyphMap;
@@ -104,7 +106,7 @@ export const SECTION_FIELDS = ["title", "level", "parent", "heading", "body", "m
 export const DEFAULT_SECTIONS_RULE: SectionsRule = {
   type: "sections", pages: "", heading_mode: "font", size_ratio: 1.15, bold_headings: true, max_heading_chars: 120,
   heading_pattern: "", include_preamble: true, join_lines: true, skip_header_footer: true, normalize_unicode: true,
-  emphasis: true, heading_exclude: "",
+  emphasis: true, keep_blocks: false, heading_exclude: "",
 };
 
 /** `markdown` = heading + body, ready to use. */

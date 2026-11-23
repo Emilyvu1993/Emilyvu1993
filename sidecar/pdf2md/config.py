@@ -9,7 +9,7 @@ from .errors import INVALID_CONFIG, REGEX_INVALID, ConvertError
 TRANSFORM_RE = re.compile(r"^(trim|upper|lower|number|number:eu|date:.+)$")
 OUTPUT_MODES = {"single_file", "file_per_record"}
 HEADING_MODES = {"font", "numbering", "regex"}
-SECTION_BOOLS = ("bold_headings", "include_preamble", "join_lines", "skip_header_footer", "normalize_unicode", "emphasis")
+SECTION_BOOLS = ("bold_headings", "include_preamble", "join_lines", "skip_header_footer", "normalize_unicode", "emphasis", "keep_blocks")
 
 
 def _req(d: dict, key: str, path: str) -> Any:

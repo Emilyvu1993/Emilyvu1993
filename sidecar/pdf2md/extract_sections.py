@@ -22,6 +22,7 @@ MAX_LEVEL = 6
 
 BOLD_RE = re.compile(r"(?i)bold|black|heavy|semibold|demi|[-,.]bd\b|\bbd\b")
 ITALIC_RE = re.compile(r"(?i)italic|oblique")
+MONO_RE = re.compile(r"(?i)menlo|mono|courier|consolas|\bcode\b")
 WORD_RE = re.compile(r"[^\W\d_]{2,}")  # a heading contains at least one real word (not lone symbols/letters)
 PAGE_NUM_RE = re.compile(r"(?i)^\W*(?:trang|page|p\.)?\s*\d+(?:\s*(?:/|of|trên)\s*\d+)?\W*$")
 # bullet glyphs often have no Unicode mapping -> pdfminer emits "(cid:N)"
@@ -49,25 +50,35 @@ class Line:
     bold: bool
     page_height: float
     kind: tuple | None = None  # set when the line is a heading
-    runs: list = field(default_factory=list)  # [(text, bold, italic)] in reading order; [] = unstyled
+    runs: list = field(default_factory=list)  # [(text, bold, italic, mono)] in reading order; [] = unstyled
+    x0: float = 0.0
+    x1: float = 0.0
+    mono_frac: float = 0.0                     # share of glyphs from a monospace font
+    block: str | None = None                   # set on synthetic lines that carry a ready-made Markdown block (table / code)
 
-    def md(self) -> str:
-        """Line text with bold/italic as Markdown; spaces stay outside the markers."""
-        if not self.runs:
+    def md(self, emphasis: bool = True, code: bool = False) -> str:
+        """Line text with bold/italic (emphasis) and monospace (code) as Markdown; spaces stay outside the markers."""
+        if not self.runs or not (emphasis or code):
             return self.text
         out = []
-        for t, b, i in self.runs:
+        for run in self.runs:
+            t, b, i = run[:3]
+            mono = run[3] if len(run) > 3 else False
             core = t.strip()
-            if not core or not (b or i):
+            b, i = b and emphasis, i and emphasis
+            mono = mono and code
+            if not core or not (b or i or mono):
                 out.append(t)
                 continue
-            m = "***" if b and i else "**" if b else "*"
+            if mono:
+                core = f"`{core}`"
+            m = "***" if b and i else "**" if b else "*" if i else ""
             out.append(f"{t[:len(t) - len(t.lstrip())]}{m}{core}{m}{t[len(t.rstrip()):]}")
         return re.sub(r"\s+", " ", "".join(out)).strip()
 
 
-def _styled_runs(chars: list[dict], text: str, normalize: bool) -> list[tuple[str, bool, bool]]:
-    """Group a line's characters into (text, bold, italic) runs. Falls back to [] (plain text) unless the
+def _styled_runs(chars: list[dict], text: str, normalize: bool) -> list[tuple[str, bool, bool, bool]]:
+    """Group a line's characters into (text, bold, italic, mono) runs. Falls back to [] (plain text) unless the
     rebuilt text equals the line text, so emphasis can never alter the wording."""
     runs: list[list] = []
     prev: dict | None = None
@@ -82,26 +93,26 @@ def _styled_runs(chars: list[dict], text: str, normalize: bool) -> list[tuple[st
             if prev is not None and not prev["text"].isspace() and c["x0"] - prev["x1"] > 0.2 * c["size"] and runs:
                 runs[-1][0] += " "
             fn = c.get("fontname", "")
-            b, i = bool(BOLD_RE.search(fn)), bool(ITALIC_RE.search(fn))
-            if runs and runs[-1][1] == b and runs[-1][2] == i:
+            b, i, mo = bool(BOLD_RE.search(fn)), bool(ITALIC_RE.search(fn)), bool(MONO_RE.search(fn))
+            if runs and runs[-1][1] == b and runs[-1][2] == i and runs[-1][3] == mo:
                 runs[-1][0] += t
             else:
-                runs.append([t, b, i])
+                runs.append([t, b, i, mo])
         prev = c
     joined = re.sub(r"\s+", " ", "".join(r[0] for r in runs)).strip()
     if joined != text:
         return []
-    out: list[tuple[str, bool, bool]] = []
-    for t, b, i in runs:
+    out: list[tuple[str, bool, bool, bool]] = []
+    for t, b, i, mo in runs:
         t = re.sub(r"\s+", " ", t)
         if out and out[-1][0].endswith(" ") and t.startswith(" "):
             t = t[1:]
         if normalize:
             t = unicodedata.normalize("NFC", t)
-        out.append((t, b, i))
+        out.append((t, b, i, mo))
     if out:
-        out[0] = (out[0][0].lstrip(), out[0][1], out[0][2])
-        out[-1] = (out[-1][0].rstrip(), out[-1][1], out[-1][2])
+        out[0] = (out[0][0].lstrip(),) + out[0][1:]
+        out[-1] = (out[-1][0].rstrip(),) + out[-1][1:]
     return [r for r in out if r[0]]
 
 
@@ -120,7 +131,9 @@ def load_lines(pdf, pages: list[int], normalize: bool = True, glyph_map: dict | 
                 text = unicodedata.normalize("NFC", text)
             size = Counter(round(c["size"] * 2) / 2 for c in chars).most_common(1)[0][0]
             bold = sum(1 for c in chars if BOLD_RE.search(c.get("fontname", ""))) / len(chars) >= 0.6
-            out.append(Line(text, pi + 1, ln["top"], ln["bottom"], size, bold, float(page.height), runs=runs))
+            mono_frac = sum(1 for c in chars if MONO_RE.search(c.get("fontname", ""))) / len(chars)
+            out.append(Line(text, pi + 1, ln["top"], ln["bottom"], size, bold, float(page.height), runs=runs,
+                            x0=ln["x0"], x1=ln["x1"], mono_frac=mono_frac))
         release(page)
     return out
 
@@ -183,6 +196,7 @@ def detect_headings(lines: list[Line], rule: dict, body_size: float, body_bold: 
     max_chars = int(rule.get("max_heading_chars", 120))
     ex_pat = rule.get("heading_exclude")
     ex = compile_regex(ex_pat, "extraction.heading_exclude") if ex_pat else None
+    lines = [l for l in lines if l.block is None]
     if ex:  # lines the user says are never headings (e.g. a repeated label such as "Is it upside down?")
         lines = [l for l in lines if not ex.search(l.text)]
     if mode == "font":
@@ -234,18 +248,27 @@ def _starts_label(l: Line, prev: Line | None) -> bool:
     return not (prev and prev.runs and prev.runs[-1][1] and prev.runs[-1][0].strip())  # label wrapped from above
 
 
-def _paragraphs(body: list[Line], join_lines: bool, emphasis: bool = True) -> str:
+def _paragraphs(body: list[Line], join_lines: bool, emphasis: bool = True, code: bool = False) -> str:
     paras: list[tuple[list[str], bool]] = []
     cur: list[str] = []
     cur_bullet = False
     prev: Line | None = None
     for l in body:
-        txt = l.md() if emphasis else l.text
+        if l.block is not None:                      # a table / code block: always its own paragraph
+            if cur:
+                paras.append((cur, cur_bullet))
+                cur, cur_bullet = [], False
+            paras.append(([l.block], False))
+            prev = l
+            continue
+        txt = l.md(emphasis, code)
         b = BULLET_RE.match(txt)
         if b:
             txt = "- " + txt[b.end():]
         if prev is None:
             new = False
+        elif prev.block is not None:
+            new = True
         elif b or _starts_label(l, prev):
             new = True
         elif l.page != prev.page:
@@ -275,6 +298,7 @@ def build_sections(lines: list[Line], rule: dict) -> list[dict]:
     include_pre = rule.get("include_preamble", True)
     join = rule.get("join_lines", True)
     emphasis = rule.get("emphasis", True)
+    code = rule.get("keep_blocks", False)
     raw: list[dict] = []
     cur: dict | None = None
     pre: list[Line] = []
@@ -320,7 +344,7 @@ def build_sections(lines: list[Line], rule: dict) -> list[dict]:
                 stack.pop()
             parent = stack[-1][1] if stack else ""
             stack.append((s["level"], s["title"]))
-        body = _paragraphs(s["body"], join, emphasis)
+        body = _paragraphs(s["body"], join, emphasis, code)
         heading = f"{'#' * s['level']} {s['title']}" if s["level"] else ""
         md = "\n\n".join(x for x in (heading, body) if x)
         out.append({
@@ -344,6 +368,9 @@ def analyze(pdf, pages: list[int], rule: dict):
         lines = drop_running_lines([l for l in lines if l.page - 1 in wanted], repeated)
     if not lines:
         raise ConvertError(NO_RECORDS_FOUND, "No text lines found on the selected pages")
+    if rule.get("keep_blocks"):
+        from . import blocks  # lazy: blocks imports this module
+        lines = blocks.apply(pdf, pages, lines, rule)
     body_size, body_bold = body_style(lines)
     detect_headings(lines, rule, body_size, body_bold)
     return lines, body_size
