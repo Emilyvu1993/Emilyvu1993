@@ -1,7 +1,13 @@
 {
   "bundle": {
-    "externalBin": [
-      "binaries/pdf2md"
-    ]
+    "externalBin": ["binaries/pdf2md"],
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "compression": "lzma",
+        "displayLanguageSelector": false
+      },
+      "webviewInstallMode": { "type": "downloadBootstrapper", "silent": true }
+    }
   }
 }

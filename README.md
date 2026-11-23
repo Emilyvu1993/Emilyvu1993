@@ -55,11 +55,19 @@ cd app && npm run dev & node e2e/ui-flow.mjs        # UI flows (needs playwright
 
 ## Installers
 
-**Windows (MSI + NSIS `.exe`)** are built by GitHub Actions: *Actions → Build desktop app → Run workflow* (or push a tag such as
-`v0.1.0`), then download the `windows-installers` artifact from the finished run. The workflow first runs all tests on Linux, then
-freezes the Python sidecar, **smoke-tests the frozen executable** (`sidecar/smoke_frozen.py`) and only then builds the installers.
+**Windows: one setup `.exe`.** Download it from GitHub Actions (*Actions → Build desktop app → Run workflow* or push a tag such
+as `v0.1.0`, then take the `windows-installer` artifact of the finished run). Users just double-click it:
+- installs **for the current user only**: no administrator rights, no UAC prompt, no console window, no Python needed;
+- Start-menu / desktop shortcut, uninstall from *Windows Settings → Apps*;
+- WebView2 (the UI engine, built into Windows 11) is downloaded only if the PC lacks it, so that case needs Internet once.
 
-The installers are **not code-signed**: Windows SmartScreen shows "Windows protected your PC" → *More info → Run anyway*.
+The installer is **not code-signed**: Windows SmartScreen shows "Windows protected your PC" → *More info → Run anyway*;
+some corporate antivirus products flag unsigned one-file executables (code signing is the real fix).
+
+Before the artifact is published the workflow installs it silently on a clean Windows runner and checks that the app and the
+sidecar are installed side by side, that the installed app is a **GUI** program (PE subsystem, so no console), that the
+**installed** sidecar passes `sidecar/smoke_frozen.py`, that the app stays alive (a screenshot is attached as `app-window`),
+and that uninstalling removes everything.
 
 Build locally (per OS; PyInstaller does not cross-compile):
 ```bash
