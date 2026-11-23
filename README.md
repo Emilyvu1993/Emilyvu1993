@@ -41,7 +41,7 @@ Design: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r sidecar/requirements-dev.txt
 cd app && npm install
-npm run tauri:dev          # needs Linux: libwebkit2gtk-4.1-dev, libgtk-3-dev, librsvg2-dev
+npm run tauri:dev          # Windows: needs WebView2 (built into Windows 11)
 npm run dev                # browser-only UI with the mock backend (no Rust/Python)
 ```
 
@@ -76,5 +76,4 @@ cd app && npm ci
 npm run tauri:build          # freezes the sidecar (sidecar/run_pdf2md.py), then bundles the app
 python ../sidecar/smoke_frozen.py   # optional: check the frozen sidecar on its own
 ```
-Linux: `npx tauri build --bundles deb --config src-tauri/tauri.release.conf.json` (needs `libwebkit2gtk-4.1-dev` etc.).
 The sidecar is bundled as `pdf2md[.exe]` next to the app executable; `PDF2MD_SIDECAR_PROGRAM` overrides it for debugging.
